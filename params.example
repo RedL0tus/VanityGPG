@@ -1,0 +1,12 @@
+<GnupgKeyParms format="internal">
+Key-Type: EdDSA
+Key-Curve: ed25519
+Key-Usage: sign
+Subkey-Type: ECDH
+Subkey-Curve: Curve25519
+Subkey-Usage: encrypt
+Name-Real: Kay Lin
+Name-Email: i@v2bv.net
+Expire-Date: 0
+Passphrase: 114514
+</GnupgKeyParms>
