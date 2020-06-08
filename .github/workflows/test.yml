@@ -17,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Install GPGME
-      run: apt-get install libgpgme-dev libgpg-error-dev
+      run: sudo apt-get install libgpgme-dev libgpg-error-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests
