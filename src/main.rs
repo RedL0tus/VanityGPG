@@ -2,6 +2,7 @@
 //!
 //! A simple tool for generating and filtering vanity GPG keys, c0nCurr3nt1Y.
 
+extern crate backtrace;
 extern crate clap;
 extern crate colored;
 extern crate indicatif;
@@ -12,18 +13,20 @@ extern crate vanity_gpg;
 
 mod logger;
 
-use anyhow::{bail, Error};
+use anyhow::Error;
+use backtrace::Backtrace;
 use clap::Clap;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{debug, info, set_boxed_logger, set_max_level, Level};
 use regex::Regex;
-use vanity_gpg::{KeyGenerationResult, Protocol, VanityGPG};
+use vanity_gpg::{Ciphers, Key, Params, VanityGPG};
 
 use std::env;
-use std::fs;
+use std::fs::File;
+use std::io::prelude::*;
 use std::panic;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -47,22 +50,41 @@ const PKG_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 #[derive(Clap, Debug)]
 #[clap(version = PKG_VERSION, about = PKG_DESCRIPTION)]
 struct Opts {
-    /// File storing GPG batch generation parameters
-    #[clap(short = "f", long = "file", about = "File storing GPG batch generation parameters", default_value = "params")]
-    params_filename: String,
     /// Concurrent key generation jobs
-    #[clap(short = "j", long = "jobs", about = "Concurrent key generation jobs", default_value = "1")]
+    #[clap(
+        short = 'j',
+        long = "jobs",
+        about = "Concurrent key generation jobs",
+        default_value = "1"
+    )]
     concurrent_jobs: usize,
     /// Regex pattern for matching fingerprints
     #[clap(
-        short = "p",
+        short = 'p',
         long = "pattern",
         about = "Regex pattern for matching fingerprints"
     )]
     pattern: String,
+    /// Cipher suite
+    #[clap(
+        short = 'c',
+        long = "cipher-suite",
+        about = "Cipher suite",
+        default_value = "RSA4096"
+    )]
+    cipher_suite: String,
+    /// User ID
+    #[clap(short = 'u', long = "user-id", about = "OpenPGP compatible user ID")]
+    user_id: Option<String>,
+    #[clap(
+        short = 'd',
+        long = "dry-run",
+        about = "Dry run (does not save matched keys)"
+    )]
+    dry_run: bool,
     /// Verbose level
     #[clap(
-        short = "v",
+        short = 'v',
         long = "verbose",
         about = "Verbose level",
         parse(from_occurrences)
@@ -78,8 +100,10 @@ impl Backend for ProgressBar {
 }
 
 /// Set panic hook with repository information
-fn setup_panic_hook() {
-    panic::set_hook(Box::new(|panic_info: &panic::PanicInfo| {
+fn setup_panic_hook(progress_bar: Arc<Mutex<ProgressBar>>) {
+    panic::set_hook(Box::new(move |panic_info: &panic::PanicInfo| {
+        println!("{:#?}", Backtrace::new());
+        progress_bar.lock().unwrap().finish_and_clear();
         if let Some(info) = panic_info.payload().downcast_ref::<&str>() {
             println!("Panic occurred: {:?}", info);
         } else {
@@ -92,10 +116,7 @@ fn setup_panic_hook() {
                 location.line()
             );
         }
-        println!(
-            "Please report this panic to {}/issues",
-            PKG_REPOSITORY
-        );
+        println!("Please report this panic to {}/issues", PKG_REPOSITORY);
     }));
 }
 
@@ -123,36 +144,38 @@ fn setup_logger(verbosity: u8) -> Result<Arc<Mutex<ProgressBar>>, Error> {
     Ok(Arc::clone(&wrapped_progress_bar))
 }
 
-/// Read GPG key generation parameters from file
-fn read_params(filename: &str) -> Result<String, Error> {
-    if !fs::metadata(filename)?.is_file() {
-        bail!("File not found");
-    }
-    debug!("Key generation parameters exists");
-    Ok(fs::read_to_string(&filename)?)
-}
-
 /// Jobs within each worker threads
 fn start_job(
     id: usize,
+    dry_run: bool,
     total_counter: Arc<AtomicUsize>,
     found_counter: Arc<AtomicUsize>,
-    params: String,
+    params: Params,
     pattern: Regex,
 ) {
     info!("({}): Staring...", id);
-    let mut vanity_gpg =
-        VanityGPG::new(id, Protocol::OpenPgp, None, Some("./gpg"), &params).unwrap();
+    let mut vanity_gpg = VanityGPG::new(id, params).expect("Failed to start");
     // Register a regex hook
-    vanity_gpg.register_hook(move |result: &KeyGenerationResult| {
-        if let Ok(fingerprint) = result.fingerprint() {
-            total_counter.fetch_add(1, Ordering::SeqCst);
-            if pattern.is_match(fingerprint) {
-                found_counter.fetch_add(1, Ordering::SeqCst);
-                true
-            } else {
-                false
+    vanity_gpg.register_hook(move |key: &Key| {
+        let fingerprint = key.get_fingerprint_hex();
+        total_counter.fetch_add(1, Ordering::SeqCst);
+        if pattern.is_match(&fingerprint) {
+            found_counter.fetch_add(1, Ordering::SeqCst);
+            if !dry_run {
+                // Save secret key
+                let mut secret_key_file = File::create(format!("{}-secret.asc", &fingerprint))
+                    .expect("Failed to save secret key");
+                secret_key_file
+                    .write_all(key.get_tsk_armored().unwrap().as_bytes())
+                    .unwrap();
+                // Save public key
+                let mut public_key_file = File::create(format!("{}-public.asc", &fingerprint))
+                    .expect("Failed to save public key");
+                public_key_file
+                    .write_all(key.get_armored().unwrap().as_bytes())
+                    .unwrap();
             }
+            true
         } else {
             false
         }
@@ -162,9 +185,6 @@ fn start_job(
 
 /// Start the program
 fn main() -> Result<(), Error> {
-    // Setup panic hook
-    setup_panic_hook();
-
     // Parse commandline options
     let opts: Opts = Opts::parse();
 
@@ -174,9 +194,13 @@ fn main() -> Result<(), Error> {
     info!("Main: (So fast, such concurrency, wow)");
     info!("Main: Please report issues to \"{}\"", PKG_REPOSITORY);
 
+    // Setup panic hook
+    let progress_bar_cloned = Arc::clone(&progress_bar);
+    setup_panic_hook(progress_bar_cloned);
+
     // Start worker threads
     let mut handles = vec![];
-    let params = read_params(&opts.params_filename)?;
+    let params = Params::new(opts.cipher_suite.parse::<Ciphers>()?, opts.user_id);
     let pattern = Regex::new(&opts.pattern)?;
     let total_counter = Arc::new(AtomicUsize::new(0));
     let found_counter = Arc::new(AtomicUsize::new(0));
@@ -186,9 +210,11 @@ fn main() -> Result<(), Error> {
         let found_counter = Arc::clone(&found_counter);
         let params_cloned = params.clone();
         let pattern_cloned = pattern.clone();
+        let dry_run = opts.dry_run;
         handles.push(thread::spawn(move || {
             start_job(
                 id,
+                dry_run,
                 total_counter,
                 found_counter,
                 params_cloned,
@@ -206,7 +232,7 @@ fn main() -> Result<(), Error> {
         progress_bar
             .lock()
             .unwrap()
-            .set_message(&format!("Summary: found {} (total generated {})", found, total));
+            .set_message(&format!("Summary: {} found ({} generated)", found, total));
         thread::sleep(Duration::from_millis(100));
     }));
 

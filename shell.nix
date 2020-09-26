@@ -11,7 +11,7 @@ in
         buildInputs = [
             # List packages that should be on the path
             # You can search for package names using nix-env -qaP | grep <name>
-            gpgme libgpgerror
+            stdenv clang nettle pkg-config capnproto sqlite darwin.apple_sdk.frameworks.Security
         ];
 
         shellHook = ''

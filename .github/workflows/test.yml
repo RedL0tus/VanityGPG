@@ -12,12 +12,12 @@ env:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
-    - name: Install GPGME
-      run: sudo apt-get install libgpgme-dev libgpg-error-dev
+    - name: Install dependencies
+      run: sudo apt-get install nettle-dev libssl-dev capnproto make clang pkg-config libsqlite3-dev
     - name: Build
       run: cargo build --verbose
     - name: Run tests

@@ -1,98 +1,52 @@
 //! # VanityGPG
 //!
-//! The underlying `GPGME` wrapper and hooking mechanism.
-//!
-//! ## Examples
-//! ```rust
-//! extern crate vanity_gpg;
-//!
-//! use vanity_gpg::{KeyGenerationResult, Protocol, VanityGPG};
-//!
-//! const ECC_PARAMS: &'static str = r#"
-//!     <GnupgKeyParms format="internal">
-//!         Key-Type: EdDSA
-//!         Key-Curve: ed25519
-//!         Key-Usage: sign
-//!         Subkey-Type: ECDH
-//!         Subkey-Curve: Curve25519
-//!         Subkey-Usage: encrypt
-//!         Name-Real: Kay Lin
-//!         Name-Email: i@v2bv.net
-//!         Expire-Date: 0
-//!         Passphrase: 114514
-//!     </GnupgKeyParms>
-//! "#;
-//!
-//! let mut vanity_gpg =
-//!     VanityGPG::new(0, Protocol::OpenPgp, None, Some("./gpg"), ECC_PARAMS).unwrap();
-//! vanity_gpg.register_hook(|result: &KeyGenerationResult| {
-//!     assert!(result.has_primary_key());
-//!     false
-//! });
-//! vanity_gpg.try_once().unwrap();
-//! ```
+//! It works.
 
 extern crate anyhow;
-extern crate gpgme;
-extern crate lazy_static;
 extern crate log;
+extern crate sequoia_openpgp;
+extern crate thiserror;
 
 pub mod gpg;
 
 use anyhow::{bail, Error};
-use lazy_static::lazy_static;
 use log::{debug, info};
 
-use gpg::{DeleteKeyFlags, GPG};
-
-pub use gpg::{KeyGenerationResult, Protocol};
+pub use gpg::{Ciphers, Key, Params};
 
 use std::clone::Clone;
 use std::sync::Arc;
 
-lazy_static! {
-    /// Default flags for deletion
-    static ref DELETE_FLAG: DeleteKeyFlags = DeleteKeyFlags::all();
-}
-
 /// Hook trait
 pub trait Hook: Sync + Send {
-    fn process(&self, result: &KeyGenerationResult) -> bool;
+    fn process(&self, key: &Key) -> bool;
 }
 
-/// Implement `Hook` trait for `Fn(&KeyGenerationResult) -> bool`
+/// Implement `Hook` trait for `Fn(&Key) -> bool`
 impl<F> Hook for F
 where
-    F: Fn(&KeyGenerationResult) -> bool + Sync + Send + Clone,
+    F: Fn(&Key) -> bool + Sync + Send + Clone,
 {
-    fn process(&self, result: &KeyGenerationResult) -> bool {
+    fn process(&self, key: &Key) -> bool {
         debug!("Executing hook function...");
-        self(result)
+        self(key)
     }
 }
 
 /// VanityGPG generator
-pub struct VanityGPG<'a> {
+pub struct VanityGPG {
     id: usize,
-    gpg: GPG,
-    params: &'a str,
+    params: Params,
     match_hooks: Vec<Arc<dyn Hook>>,
 }
 
 /// Main impl block for the wrapped `VanityGPG`
-impl<'a> VanityGPG<'a> {
+impl VanityGPG {
     /// Create a new instance of `VanityGPG`
-    pub fn new(
-        id: usize,
-        protocol: Protocol,
-        engine_path: Option<&'a str>,
-        home_dir: Option<&'a str>,
-        params: &'a str,
-    ) -> Result<Self, Error> {
+    pub fn new(id: usize, params: Params) -> Result<Self, Error> {
         debug!("Initiating VanityGPG instance");
         Ok(Self {
             id,
-            gpg: GPG::new(protocol, engine_path, home_dir)?,
             params,
             match_hooks: vec![],
         })
@@ -110,21 +64,18 @@ impl<'a> VanityGPG<'a> {
             debug!("({}): No hooks available", self.id);
             bail!("({}): No hooks available", self.id);
         }
-        let result = self.gpg.generate_key(self.params)?;
-        let cloned_result = result.clone();
-        let fingerprint = cloned_result.fingerprint()?;
-        info!("({}): [{}] Generated", self.id, &fingerprint);
-        let key = self.gpg.get_key(fingerprint)?;
+        let key = Key::generate(&self.params)?;
+        let key_cloned = key.clone();
+        let fingerprint = key_cloned.get_fingerprint_hex();
         let matched = self
             .match_hooks
             .clone()
             .iter()
-            .fold(false, move |acc, hook| hook.process(&result) || acc);
-        if !matched {
-            self.gpg.delete_key_with_flags(key, *DELETE_FLAG)?;
-            info!("({}): [{}] Deleted", self.id, &fingerprint);
-        } else {
+            .fold(false, move |acc, hook| hook.process(&key) || acc);
+        if matched {
             info!("({}): [{}] Matched", self.id, &fingerprint);
+        } else {
+            info!("({}): [{}] Not matched", self.id, &fingerprint);
         }
         Ok(matched)
     }
@@ -140,64 +91,8 @@ impl<'a> VanityGPG<'a> {
 
 #[cfg(test)]
 mod test_vanity_gpg {
-    use super::{KeyGenerationResult, Protocol, VanityGPG};
-
-    const RSA_PARAMS: &'static str = r#"
-        <GnupgKeyParms format="internal">
-            Key-Type: RSA
-            Key-Length: 4096
-            Key-Usage: sign
-            Subkey-Type: RSA
-            Subkey-Length: 4096
-            Subkey-Usage: encrypt
-            Name-Real: Kay Lin
-            Name-Email: i@v2bv.net
-            Expire-Date: 0
-            Passphrase: 114514
-        </GnupgKeyParms>
-    "#;
-
-    const ECC_PARAMS: &'static str = r#"
-        <GnupgKeyParms format="internal">
-            Key-Type: EdDSA
-            Key-Curve: ed25519
-            Key-Usage: sign
-            Subkey-Type: ECDH
-            Subkey-Curve: Curve25519
-            Subkey-Usage: encrypt
-            Name-Real: Kay Lin
-            Name-Email: i@v2bv.net
-            Expire-Date: 0
-            Passphrase: 114514
-        </GnupgKeyParms>
-    "#;
-
     #[test]
-    fn no_hook() {
-        let mut vanity_gpg =
-            VanityGPG::new(0, Protocol::OpenPgp, None, Some("./gpg"), RSA_PARAMS).unwrap();
-        assert!(true, vanity_gpg.try_once().is_err());
-    }
-
-    #[test]
-    fn ecc_generation() {
-        let mut vanity_gpg =
-            VanityGPG::new(0, Protocol::OpenPgp, None, Some("./gpg"), ECC_PARAMS).unwrap();
-        vanity_gpg.register_hook(|result: &KeyGenerationResult| {
-            assert!(result.has_primary_key());
-            false
-        });
-        vanity_gpg.try_once().unwrap();
-    }
-
-    #[test]
-    fn rsa_generation() {
-        let mut vanity_gpg =
-            VanityGPG::new(0, Protocol::OpenPgp, None, Some("./gpg"), RSA_PARAMS).unwrap();
-        vanity_gpg.register_hook(|result: &KeyGenerationResult| {
-            assert!(result.has_primary_key());
-            false
-        });
-        vanity_gpg.try_once().unwrap();
+    fn it_works() {
+        assert_eq!(1 + 1, 2);
     }
 }
