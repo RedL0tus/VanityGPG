@@ -18,12 +18,12 @@ use super::{
 use std::io::Write;
 #[cfg(feature = "za_warudo")]
 use std::time::Duration;
+#[cfg(not(feature = "za_warudo"))]
 use std::time::SystemTime;
 
 pub struct SequoiaBackend {
     primary_key: Key4<SecretParts, PrimaryRole>,
     cipher_suite: CipherSuite,
-    creation_time: SystemTime,
 }
 
 fn generate_key(
@@ -72,9 +72,8 @@ impl Backend for SequoiaBackend {
 
     #[cfg(feature = "za_warudo")]
     fn shuffle(&mut self) -> Result<(), PGPError> {
-        let creation_time = self.creation_time - Duration::from_secs(1);
+        let creation_time = self.primary_key.creation_time() - Duration::from_secs(1);
         if self.primary_key.set_creation_time(creation_time).is_ok() {
-            self.creation_time = creation_time;
             Ok(())
         } else {
             Err(PGPError::FailedToModifyGenerationTime)
@@ -84,6 +83,7 @@ impl Backend for SequoiaBackend {
     fn get_armored_results(self, uid: &UserID) -> Result<ArmoredKey, UniversalError> {
         let mut packets = Vec::<Packet>::new();
         let mut signer = self.primary_key.clone().into_keypair()?;
+        let creation_time = self.primary_key.creation_time();
         let primary_key_packet = Key::V4(self.primary_key);
 
         // Direct key signature and the secret key
@@ -91,7 +91,7 @@ impl Backend for SequoiaBackend {
             .set_hash_algo(HashAlgorithm::SHA512)
             .set_features(&Features::sequoia())?
             .set_key_flags(&KeyFlags::empty().set_certification().set_signing())?
-            .set_signature_creation_time(self.creation_time)?
+            .set_signature_creation_time(creation_time)?
             .set_key_validity_period(None)?
             .set_preferred_hash_algorithms(vec![HashAlgorithm::SHA512, HashAlgorithm::SHA256])?
             .set_preferred_symmetric_algorithms(vec![
@@ -108,7 +108,7 @@ impl Backend for SequoiaBackend {
         // UID
         if let Some(uid_string) = uid.get_id() {
             let uid_signature_builder = SignatureBuilder::from(direct_key_signature)
-                .set_signature_creation_time(self.creation_time)?
+                .set_signature_creation_time(creation_time)?
                 .set_revocation_key(vec![])? // Remove revocation certificate
                 .set_type(SignatureType::PositiveCertification)
                 .set_hash_algo(HashAlgorithm::SHA512);
@@ -121,10 +121,10 @@ impl Backend for SequoiaBackend {
         let mut subkey = generate_key(self.cipher_suite.get_encryption_key_algorithm(), false)?
             .parts_into_secret()?
             .role_into_subordinate();
-        subkey.set_creation_time(self.creation_time)?;
+        subkey.set_creation_time(creation_time)?;
         let subkey_packet = Key::V4(subkey);
         let subkey_signature_builder = SignatureBuilder::new(SignatureType::SubkeyBinding)
-            .set_signature_creation_time(self.creation_time)?
+            .set_signature_creation_time(creation_time)?
             .set_hash_algo(HashAlgorithm::SHA512)
             .set_features(&Features::sequoia())?
             .set_key_flags(&KeyFlags::empty().set_storage_encryption())?
@@ -154,12 +154,10 @@ impl Backend for SequoiaBackend {
 impl SequoiaBackend {
     pub fn new<C: Into<CipherSuite>>(cipher_suite: C) -> Result<Self, PGPError> {
         let ciphers = cipher_suite.into();
-        let creation_time = SystemTime::now();
         let primary_key = generate_key(ciphers.get_signing_key_algorithm(), true)?;
         Ok(Self {
             primary_key,
             cipher_suite: ciphers,
-            creation_time,
         })
     }
 }
