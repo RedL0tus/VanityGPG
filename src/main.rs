@@ -54,6 +54,8 @@ const PKG_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
 /// Key reshuffle limit
 const KEY_RESHUFFLE_LIMIT: usize = 60 * 60 * 24 * 30; // One month ago at worst
+/// Counter threshold
+const COUNTER_THRESHOLD: usize = 13331; // Just a random number
 
 /// Commandline option parser with `Clap`
 #[derive(Clap, Debug)]
@@ -182,12 +184,11 @@ impl Counter {
         }
     }
 
-    fn count_total(&self) {
-        self.total.fetch_add(1, Ordering::SeqCst);
+    fn count_total(&self, accumulated_counts: usize) {
+        self.total.fetch_add(accumulated_counts, Ordering::SeqCst);
     }
 
     fn count_success(&self) {
-        self.count_total();
         self.success.fetch_add(1, Ordering::SeqCst);
     }
 
@@ -279,6 +280,7 @@ fn main() -> Result<(), Error> {
         pool.spawn(move || {
             let mut key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
             let mut reshuffle_counter: usize = KEY_RESHUFFLE_LIMIT;
+            let mut report_counter: usize = 0;
             loop {
                 if key.check(&pattern) {
                     warn!("found [{}]", key.get_fingerprint());
@@ -294,7 +296,11 @@ fn main() -> Result<(), Error> {
                         thread::sleep(Duration::from_secs(1));
                         key.shuffle().unwrap_or(());
                     }
-                    counter_cloned.count_total();
+                }
+                report_counter += 1;
+                if report_counter >= COUNTER_THRESHOLD {
+                    counter_cloned.count_total(report_counter);
+                    report_counter = 0;
                 }
             }
         });
