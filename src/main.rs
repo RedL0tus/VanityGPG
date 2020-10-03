@@ -18,8 +18,7 @@ use anyhow::Error;
 use backtrace::Backtrace;
 use clap::Clap;
 use log::{debug, info, warn, Level};
-use rayon::prelude::*;
-use rayon::spawn;
+use rayon::ThreadPoolBuilder;
 use regex::Regex;
 
 use std::env;
@@ -28,7 +27,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::panic;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -53,18 +52,21 @@ const PKG_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 /// Program repository (from `Cargo.toml`)
 const PKG_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
+/// Key reshuffle limit
+const KEY_RESHUFFLE_LIMIT: usize = 60 * 60 * 24 * 30; // One month ago at worst
+
 /// Commandline option parser with `Clap`
 #[derive(Clap, Debug)]
 #[clap(version = PKG_VERSION, about = PKG_DESCRIPTION)]
 struct Opts {
     /// Concurrent key generation jobs
     #[clap(
-        short = 's',
-        long = "pool_size",
-        about = "Number of keys being shuffled concurrently. ",
-        default_value = "100000"
+        short = 'j',
+        long = "jobs",
+        about = "Number of threads",
+        default_value = "8"
     )]
-    pool_size: usize,
+    jobs: usize,
     /// Regex pattern for matching fingerprints
     #[clap(
         short = 'p',
@@ -158,22 +160,11 @@ fn setup_logger<B: 'static + ProgressLoggerBackend>(
 }
 
 /// Sub-thread that display status summary
-fn setup_summary<B: ProgressLoggerBackend>(
-    logger_backend: Arc<Mutex<B>>,
-    counter: Arc<Counter>,
-    initialized: Arc<AtomicBool>,
-) {
-    let mut start = Instant::now();
-    let mut timer_started = false;
+fn setup_summary<B: ProgressLoggerBackend>(logger_backend: Arc<Mutex<B>>, counter: Arc<Counter>) {
+    let start = Instant::now();
     loop {
         thread::sleep(Duration::from_millis(100));
         debug!("Updating counter information");
-        if !initialized.load(Ordering::SeqCst) {
-            continue;
-        } else if !timer_started {
-            start = Instant::now();
-            timer_started = true;
-        }
         let secs_elapsed = start.elapsed().as_secs();
         logger_backend.lock().unwrap().set_message(&format!(
             "Summary: {} (avg. {:.2} tries/s)",
@@ -273,49 +264,46 @@ fn main() -> Result<(), Error> {
         PKG_REPOSITORY
     );
     let counter = Arc::new(Counter::new());
-    let initialized = Arc::new(AtomicBool::new(false));
+
+    let pool = ThreadPoolBuilder::new()
+        .num_threads(opts.jobs + 1)
+        .build()?;
+    let user_id = UserID::from(opts.user_id);
+
+    for _index in 0..opts.jobs {
+        let user_id_cloned = user_id.clone();
+        let pattern = Regex::new(&opts.pattern)?;
+        let dry_run = opts.dry_run;
+        let cipher_suite = CipherSuite::from_str(&opts.cipher_suite)?;
+        let counter_cloned = Arc::clone(&counter);
+        pool.spawn(move || {
+            let mut key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
+            let mut reshuffle_counter: usize = KEY_RESHUFFLE_LIMIT;
+            loop {
+                if key.check(&pattern) {
+                    warn!("found [{}]", key.get_fingerprint());
+                    counter_cloned.count_success();
+                    key.save_key(&user_id_cloned, dry_run).unwrap_or(());
+                    key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
+                } else {
+                    if reshuffle_counter == 0 {
+                        key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
+                    } else {
+                        reshuffle_counter -= 1;
+                        #[cfg(not(feature = "za_warudo"))]
+                        thread::sleep(Duration::from_secs(1));
+                        key.shuffle().unwrap_or(());
+                    }
+                    counter_cloned.count_total();
+                }
+            }
+        });
+    }
 
     // Setup summary
     let logger_backend_cloned = Arc::clone(&logger_backend);
     let counter_cloned = Arc::clone(&counter);
-    let initialized_cloned = Arc::clone(&initialized);
-    spawn(move || setup_summary(logger_backend_cloned, counter_cloned, initialized_cloned));
+    pool.install(move || setup_summary(logger_backend_cloned, counter_cloned));
 
-    let cipher_suite = CipherSuite::from_str(&opts.cipher_suite)?;
-
-    // Generate initial keys
-    let mut keys: Vec<Key<DefaultBackend>> = (0..opts.pool_size as usize)
-        .into_par_iter()
-        .map(|_| {
-            let backend = DefaultBackend::new(cipher_suite.clone()).unwrap();
-            Key::new(backend)
-        })
-        .collect();
-    initialized.store(true, Ordering::SeqCst); // Start the timer
-
-    let user_id = UserID::from(opts.user_id);
-    let dry_run = opts.dry_run;
-    // Enter loop
-    loop {
-        let pattern = Regex::new(&opts.pattern)?;
-        keys = keys
-            .into_par_iter()
-            .map(|mut key: Key<DefaultBackend>| {
-                let counter_cloned = Arc::clone(&counter);
-                if key.check(&pattern) {
-                    warn!("found [{}]", key.get_fingerprint());
-                    counter_cloned.count_success();
-                    key.save_key(&user_id, dry_run).unwrap_or(());
-                    let backend = DefaultBackend::new(cipher_suite.clone()).unwrap();
-                    Key::new(backend)
-                } else {
-                    counter_cloned.count_total();
-                    #[cfg(not(feature = "za_warudo"))]
-                    thread::sleep(Duration::from_secs(1));
-                    key.shuffle().unwrap_or(());
-                    key
-                }
-            })
-            .collect();
-    }
+    Ok(())
 }
