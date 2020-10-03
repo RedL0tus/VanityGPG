@@ -225,10 +225,6 @@ impl<B: Backend> Key<B> {
         Ok(self.backend.shuffle()?)
     }
 
-    fn check(&self, pattern: &Regex) -> bool {
-        pattern.is_match(&self.backend.fingerprint())
-    }
-
     fn save_key(self, user_id: &UserID, dry_run: bool) -> Result<(), Error> {
         if dry_run {
             return Ok(());
@@ -271,31 +267,37 @@ fn main() -> Result<(), Error> {
         .build()?;
     let user_id = UserID::from(opts.user_id);
 
-    for _index in 0..opts.jobs {
+    for thread_id in 0..opts.jobs {
         let user_id_cloned = user_id.clone();
         let pattern = Regex::new(&opts.pattern)?;
         let dry_run = opts.dry_run;
         let cipher_suite = CipherSuite::from_str(&opts.cipher_suite)?;
         let counter_cloned = Arc::clone(&counter);
+        info!("({}): Spawning thread", thread_id);
         pool.spawn(move || {
             let mut key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
             let mut reshuffle_counter: usize = KEY_RESHUFFLE_LIMIT;
             let mut report_counter: usize = 0;
             loop {
-                if key.check(&pattern) {
-                    warn!("found [{}]", key.get_fingerprint());
+                let fingerprint = key.get_fingerprint();
+                if pattern.is_match(&fingerprint) {
+                    warn!("({}): [{}] matched", thread_id, &fingerprint);
                     counter_cloned.count_success();
                     key.save_key(&user_id_cloned, dry_run).unwrap_or(());
                     key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
+                } else if reshuffle_counter == 0 {
+                    debug!(
+                        "({}): Reshuffle limit reached, generating new primary key",
+                        thread_id
+                    );
+                    key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
+                    reshuffle_counter = KEY_RESHUFFLE_LIMIT;
                 } else {
-                    if reshuffle_counter == 0 {
-                        key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
-                    } else {
-                        reshuffle_counter -= 1;
-                        #[cfg(not(feature = "za_warudo"))]
-                        thread::sleep(Duration::from_secs(1));
-                        key.shuffle().unwrap_or(());
-                    }
+                    info!("({}): [{}] is not a match", thread_id, fingerprint);
+                    reshuffle_counter -= 1;
+                    #[cfg(not(feature = "za_warudo"))]
+                    thread::sleep(Duration::from_secs(1));
+                    key.shuffle().unwrap_or(());
                 }
                 report_counter += 1;
                 if report_counter >= COUNTER_THRESHOLD {
