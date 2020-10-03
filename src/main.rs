@@ -28,7 +28,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::panic;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -157,13 +157,21 @@ fn setup_logger<B: 'static + ProgressLoggerBackend>(
 }
 
 /// Sub-thread that display status summary
-fn setup_summary<B: ProgressLoggerBackend>(logger_backend: Arc<Mutex<B>>, counter: Arc<Counter>) {
-    let start = Instant::now();
+fn setup_summary<B: ProgressLoggerBackend>(
+    logger_backend: Arc<Mutex<B>>,
+    counter: Arc<Counter>,
+    initialized: Arc<AtomicBool>,
+) {
+    let mut start = Instant::now();
+    let mut timer_started = false;
     loop {
         thread::sleep(Duration::from_millis(100));
         debug!("Updating counter information");
-        if counter.get_total() == 0 {
+        if !initialized.load(Ordering::SeqCst) {
             continue;
+        } else if !timer_started {
+            start = Instant::now();
+            timer_started = true;
         }
         let secs_elapsed = start.elapsed().as_secs();
         logger_backend.lock().unwrap().set_message(&format!(
@@ -264,11 +272,13 @@ fn main() -> Result<(), Error> {
         PKG_REPOSITORY
     );
     let counter = Arc::new(Counter::new());
+    let initialized = Arc::new(AtomicBool::new(false));
 
     // Setup summary
     let logger_backend_cloned = Arc::clone(&logger_backend);
     let counter_cloned = Arc::clone(&counter);
-    spawn(move || setup_summary(logger_backend_cloned, counter_cloned));
+    let initialized_cloned = Arc::clone(&initialized);
+    spawn(move || setup_summary(logger_backend_cloned, counter_cloned, initialized_cloned));
 
     let cipher_suite = CipherSuite::from_str(&opts.cipher_suite)?;
 
@@ -280,6 +290,7 @@ fn main() -> Result<(), Error> {
             Key::new(backend)
         })
         .collect();
+    initialized.store(true, Ordering::SeqCst); // Start the timer
 
     let user_id = UserID::from(opts.user_id);
     let dry_run = opts.dry_run;
