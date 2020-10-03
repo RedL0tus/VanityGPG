@@ -13,12 +13,17 @@ categories = [ "command-line-utilities" ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = [ "za_warudo" ]
+za_warudo = [ ]
+
 [dependencies]
 log = { version = "^0.4", features = [ "std" ] }
 clap = "3.0.0-beta.2"
+rayon = "^1.4"
 regex = "^1.3"
 anyhow = "^1.0"
-colored = "^1.9"
+colored = "^2.0"
 backtrace = "^0.3"
 indicatif = "^0.14"
 thiserror = "^1.0"

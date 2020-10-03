@@ -2,24 +2,30 @@
 //!
 //! A simple logger implementation that can be used with random progress bar implementations
 
+mod indicatif_backend;
+
 use colored::*;
-use log::{Level, Metadata, Record};
+use log::{set_boxed_logger, set_max_level, Level, Metadata, Record, SetLoggerError};
+
+pub use indicatif_backend::IndicatifBackend;
 
 use std::sync::{Arc, Mutex};
 
 /// Progress bar backend
-pub trait Backend: Sync + Send {
-    fn println(&self, content: String);
+pub trait ProgressLoggerBackend: Sync + Send {
+    fn println<S: AsRef<str>>(&self, content: S);
+    fn set_message<S: AsRef<str>>(&self, content: S);
+    fn finish(&self);
 }
 
 /// Logger that work with a progress bar implementation
-pub struct ProgressLogger {
+pub struct ProgressLogger<B: ProgressLoggerBackend> {
     max_level: Level,
-    backend: Arc<Mutex<dyn Backend>>,
+    backend: Arc<Mutex<B>>,
 }
 
 /// Implementing `Log` trait for `ProgressLogger`
-impl log::Log for ProgressLogger {
+impl<B: ProgressLoggerBackend> log::Log for ProgressLogger<B> {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= self.max_level
     }
@@ -52,9 +58,23 @@ impl log::Log for ProgressLogger {
 }
 
 /// Main impl block of `ProgressLogger`
-impl ProgressLogger {
+impl<B: 'static + ProgressLoggerBackend> ProgressLogger<B> {
     /// Create new `ProgressLogger` instance
-    pub fn new(max_level: Level, backend: Arc<Mutex<dyn Backend>>) -> Self {
-        Self { max_level, backend }
+    pub fn new(max_level: Level, backend: B) -> Self {
+        Self {
+            max_level,
+            backend: Arc::new(Mutex::new(backend)),
+        }
+    }
+
+    pub fn setup(self) -> Result<(), SetLoggerError> {
+        set_max_level(self.max_level.to_level_filter());
+        set_boxed_logger(Box::new(self))?;
+        Ok(())
+    }
+
+    /// Get `Arc<Mutex<ProgressLoggerBackend>>`
+    pub fn get_backend(&self) -> Arc<Mutex<B>> {
+        self.backend.clone()
     }
 }

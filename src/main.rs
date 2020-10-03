@@ -7,6 +7,7 @@ extern crate clap;
 extern crate colored;
 extern crate indicatif;
 extern crate log;
+extern crate rayon;
 extern crate regex;
 
 extern crate vanity_gpg;
@@ -16,29 +17,35 @@ mod logger;
 use anyhow::Error;
 use backtrace::Backtrace;
 use clap::Clap;
-use indicatif::{ProgressBar, ProgressStyle};
-use log::{debug, info, set_boxed_logger, set_max_level, Level};
+use log::{debug, info, warn, Level};
+use rayon::prelude::*;
+use rayon::spawn;
 use regex::Regex;
-use vanity_gpg::{Ciphers, Key, Params, VanityGPG};
 
 use std::env;
+use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 use std::panic;
+use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use logger::{Backend, ProgressLogger};
+use vanity_gpg::{Backend, CipherSuite, DefaultBackend, UserID};
+
+use logger::{IndicatifBackend, ProgressLogger, ProgressLoggerBackend};
 
 // Constants
 /// Default log level
-const PKG_LOG_LEVEL_DEFAULT: Level = Level::Info;
+const PKG_LOG_LEVEL_DEFAULT: Level = Level::Warn;
 /// Log level with `-v`
-const PKG_LOG_LEVEL_VERBOSE_1: Level = Level::Debug;
+const PKG_LOG_LEVEL_VERBOSE_1: Level = Level::Info;
 /// Log level with `-vv` and beyond
-const PKG_LOG_LEVEL_VERBOSE_2: Level = Level::Trace;
+const PKG_LOG_LEVEL_VERBOSE_2: Level = Level::Debug;
+/// Log level with `-vvv` and beyond
+const PKG_LOG_LEVEL_VERBOSE_3: Level = Level::Trace;
 /// Program version (from `Cargo.toml`)
 const PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Program description (from `Cargo.toml`)
@@ -52,12 +59,12 @@ const PKG_REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 struct Opts {
     /// Concurrent key generation jobs
     #[clap(
-        short = 'j',
-        long = "jobs",
-        about = "Concurrent key generation jobs",
-        default_value = "1"
+        short = 's',
+        long = "pool_size",
+        about = "Number of keys being shuffled concurrently",
+        default_value = "100000"
     )]
-    concurrent_jobs: usize,
+    pool_size: usize,
     /// Regex pattern for matching fingerprints
     #[clap(
         short = 'p',
@@ -92,18 +99,26 @@ struct Opts {
     verbose: u8,
 }
 
-/// Implementing the backend trait for `ProgressBar` from `indicatif`
-impl Backend for ProgressBar {
-    fn println(&self, content: String) {
-        self.println(content)
-    }
+#[derive(Debug)]
+struct Counter {
+    total: AtomicUsize,
+    success: AtomicUsize,
+}
+
+#[derive(Debug)]
+struct Key<B: Backend> {
+    backend: B,
+}
+
+/// Save string to file
+fn save_file(file_name: String, content: &str) -> Result<(), Error> {
+    let mut file = File::create(file_name)?;
+    Ok(file.write_all(content.as_bytes())?)
 }
 
 /// Set panic hook with repository information
-fn setup_panic_hook(progress_bar: Arc<Mutex<ProgressBar>>) {
+fn setup_panic_hook() {
     panic::set_hook(Box::new(move |panic_info: &panic::PanicInfo| {
-        println!("{:#?}", Backtrace::new());
-        progress_bar.lock().unwrap().finish_and_clear();
         if let Some(info) = panic_info.payload().downcast_ref::<&str>() {
             println!("Panic occurred: {:?}", info);
         } else {
@@ -116,130 +131,179 @@ fn setup_panic_hook(progress_bar: Arc<Mutex<ProgressBar>>) {
                 location.line()
             );
         }
+        println!("Traceback:");
+        println!("{:#?}", Backtrace::new());
+        println!();
         println!("Please report this panic to {}/issues", PKG_REPOSITORY);
     }));
 }
 
 /// Setup logger and return a `ProgressBar` that can be shared between threads
-fn setup_logger(verbosity: u8) -> Result<Arc<Mutex<ProgressBar>>, Error> {
+fn setup_logger<B: 'static + ProgressLoggerBackend>(
+    verbosity: u8,
+    backend: B,
+) -> Result<Arc<Mutex<B>>, Error> {
     let level = match verbosity {
         0 => PKG_LOG_LEVEL_DEFAULT,
         1 => PKG_LOG_LEVEL_VERBOSE_1,
-        _ => PKG_LOG_LEVEL_VERBOSE_2,
+        2 => PKG_LOG_LEVEL_VERBOSE_2,
+        _ => PKG_LOG_LEVEL_VERBOSE_3,
     };
-    set_max_level(level.to_level_filter());
-    let progress_bar = ProgressBar::new_spinner();
-    progress_bar.enable_steady_tick(120);
-    progress_bar.set_style(
-        ProgressStyle::default_spinner()
-            .tick_strings(&["▹▹▹▹▹", "▸▹▹▹▹", "▹▸▹▹▹", "▹▹▸▹▹", "▹▹▹▸▹", "▹▹▹▹▸"])
-            .template("{spinner:.blue} {msg}"),
-    );
-    progress_bar.set_message("Initializing");
-    let wrapped_progress_bar = Arc::new(Mutex::new(progress_bar));
-    let wrapped_progress_bar_cloned = Arc::clone(&wrapped_progress_bar);
-    let progress_logger = ProgressLogger::new(level, wrapped_progress_bar_cloned);
-    set_boxed_logger(Box::new(progress_logger))?;
+    let logger = ProgressLogger::new(level, backend);
     debug!("Logger initialized");
-    Ok(Arc::clone(&wrapped_progress_bar))
+    let cloned_backend = logger.get_backend();
+    logger.setup()?;
+    Ok(cloned_backend)
 }
 
-/// Jobs within each worker threads
-fn start_job(
-    id: usize,
-    dry_run: bool,
-    total_counter: Arc<AtomicUsize>,
-    found_counter: Arc<AtomicUsize>,
-    params: Params,
-    pattern: Regex,
-) {
-    info!("({}): Staring...", id);
-    let mut vanity_gpg = VanityGPG::new(id, params).expect("Failed to start");
-    // Register a regex hook
-    vanity_gpg.register_hook(move |key: &Key| {
-        let fingerprint = key.get_fingerprint_hex();
-        total_counter.fetch_add(1, Ordering::SeqCst);
-        if pattern.is_match(&fingerprint) {
-            found_counter.fetch_add(1, Ordering::SeqCst);
-            if !dry_run {
-                // Save secret key
-                let mut secret_key_file = File::create(format!("{}-secret.asc", &fingerprint))
-                    .expect("Failed to save secret key");
-                secret_key_file
-                    .write_all(key.get_tsk_armored().unwrap().as_bytes())
-                    .unwrap();
-                // Save public key
-                let mut public_key_file = File::create(format!("{}-public.asc", &fingerprint))
-                    .expect("Failed to save public key");
-                public_key_file
-                    .write_all(key.get_armored().unwrap().as_bytes())
-                    .unwrap();
-            }
-            true
-        } else {
-            false
+/// Sub-thread that display status summary
+fn setup_summary<B: ProgressLoggerBackend>(logger_backend: Arc<Mutex<B>>, counter: Arc<Counter>) {
+    let start = Instant::now();
+    loop {
+        thread::sleep(Duration::from_millis(100));
+        debug!("Updating counter information");
+        if counter.get_total() == 0 {
+            continue;
         }
-    });
-    vanity_gpg.enter_loop().unwrap();
+        let secs_elapsed = start.elapsed().as_secs();
+        logger_backend.lock().unwrap().set_message(&format!(
+            "Summary: {} (avg. {:.2} tries/s)",
+            &counter,
+            counter.get_total() as f64 / secs_elapsed as f64
+        ));
+    }
+}
+
+impl Counter {
+    fn new() -> Self {
+        Self {
+            total: AtomicUsize::new(0),
+            success: AtomicUsize::new(0),
+        }
+    }
+
+    fn count_total(&self) {
+        self.total.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn count_success(&self) {
+        self.count_total();
+        self.success.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn get_total(&self) -> usize {
+        self.total.load(Ordering::SeqCst)
+    }
+
+    fn get_success(&self) -> usize {
+        self.success.load(Ordering::SeqCst)
+    }
+}
+
+impl fmt::Display for Counter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} success, {} tries total",
+            self.get_success(),
+            self.get_total(),
+        )
+    }
+}
+
+impl<B: Backend> Key<B> {
+    fn new(backend: B) -> Key<B> {
+        Key { backend }
+    }
+
+    fn get_fingerprint(&self) -> String {
+        self.backend.fingerprint()
+    }
+
+    fn shuffle(&mut self) -> Result<(), Error> {
+        Ok(self.backend.shuffle()?)
+    }
+
+    fn check(&self, pattern: &Regex) -> bool {
+        pattern.is_match(&self.backend.fingerprint())
+    }
+
+    fn save_key(self, user_id: &UserID, dry_run: bool) -> Result<(), Error> {
+        if dry_run {
+            return Ok(());
+        }
+        let fingerprint = self.get_fingerprint();
+        info!("saving [{}]", &fingerprint);
+        let armored_keys = self.backend.get_armored_results(user_id)?;
+        save_file(
+            format!("{}-private.asc", &fingerprint),
+            armored_keys.get_private_key(),
+        )?;
+        save_file(
+            format!("{}-public.asc", &fingerprint),
+            armored_keys.get_public_key(),
+        )?;
+        Ok(())
+    }
 }
 
 /// Start the program
 fn main() -> Result<(), Error> {
+    // Setup panic hook
+    setup_panic_hook();
+
     // Parse commandline options
     let opts: Opts = Opts::parse();
 
     // Setup logger and show some messages
-    let progress_bar = setup_logger(opts.verbose)?;
-    info!("Main: Staring VanityGPG version v{}", PKG_VERSION);
-    info!("Main: (So fast, such concurrency, wow)");
-    info!("Main: Please report issues to \"{}\"", PKG_REPOSITORY);
+    let logger_backend = setup_logger(opts.verbose, IndicatifBackend::init())?;
+    warn!("Staring VanityGPG version v{}", PKG_VERSION);
+    warn!("(So fast, such concurrency, wow)");
+    warn!(
+        "if you met any issue, please file an issue report to \"{}\"",
+        PKG_REPOSITORY
+    );
+    let counter = Arc::new(Counter::new());
 
-    // Setup panic hook
-    let progress_bar_cloned = Arc::clone(&progress_bar);
-    setup_panic_hook(progress_bar_cloned);
+    // Setup summary
+    let logger_backend_cloned = Arc::clone(&logger_backend);
+    let counter_cloned = Arc::clone(&counter);
+    spawn(move || setup_summary(logger_backend_cloned, counter_cloned));
 
-    // Start worker threads
-    let mut handles = vec![];
-    let params = Params::new(opts.cipher_suite.parse::<Ciphers>()?, opts.user_id);
-    let pattern = Regex::new(&opts.pattern)?;
-    let total_counter = Arc::new(AtomicUsize::new(0));
-    let found_counter = Arc::new(AtomicUsize::new(0));
-    info!("Main: Starting {} threads...", opts.concurrent_jobs);
-    for id in 0..opts.concurrent_jobs {
-        let total_counter = Arc::clone(&total_counter);
-        let found_counter = Arc::clone(&found_counter);
-        let params_cloned = params.clone();
-        let pattern_cloned = pattern.clone();
-        let dry_run = opts.dry_run;
-        handles.push(thread::spawn(move || {
-            start_job(
-                id,
-                dry_run,
-                total_counter,
-                found_counter,
-                params_cloned,
-                pattern_cloned,
-            );
-        }));
+    let cipher_suite = CipherSuite::from_str(&opts.cipher_suite)?;
+
+    // Generate initial keys
+    let mut keys: Vec<Key<DefaultBackend>> = (0..opts.pool_size as usize)
+        .into_par_iter()
+        .map(|_| {
+            let backend = DefaultBackend::new(cipher_suite.clone()).unwrap();
+            Key::new(backend)
+        })
+        .collect();
+
+    let user_id = UserID::from(opts.user_id);
+    let dry_run = opts.dry_run;
+    // Enter loop
+    loop {
+        let pattern = Regex::new(&opts.pattern)?;
+        keys = keys
+            .into_par_iter()
+            .map(|mut key: Key<DefaultBackend>| {
+                let counter_cloned = Arc::clone(&counter);
+                if key.check(&pattern) {
+                    warn!("found [{}]", key.get_fingerprint());
+                    counter_cloned.count_success();
+                    key.save_key(&user_id, dry_run).unwrap_or(());
+                    let backend = DefaultBackend::new(cipher_suite.clone()).unwrap();
+                    Key::new(backend)
+                } else {
+                    counter_cloned.count_total();
+                    #[cfg(not(feature = "za_warudo"))]
+                    thread::sleep(Duration::from_secs(1));
+                    key.shuffle().unwrap_or(());
+                    key
+                }
+            })
+            .collect();
     }
-
-    // Setup spinner updating thread
-    let total_counter = Arc::clone(&total_counter);
-    let found_counter = Arc::clone(&found_counter);
-    handles.push(thread::spawn(move || loop {
-        let total = total_counter.load(Ordering::SeqCst);
-        let found = found_counter.load(Ordering::SeqCst);
-        progress_bar
-            .lock()
-            .unwrap()
-            .set_message(&format!("Summary: {} found ({} generated)", found, total));
-        thread::sleep(Duration::from_millis(100));
-    }));
-
-    // Join thread handles
-    for handle in handles {
-        handle.join().unwrap();
-    }
-
-    Ok(())
 }

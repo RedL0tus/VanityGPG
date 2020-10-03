@@ -4,9 +4,12 @@
       <w>eddsa</w>
       <w>gpgme</w>
       <w>indicatif</w>
+      <w>nistp</w>
       <w>senpai</w>
       <w>subkey</w>
       <w>thiserror</w>
+      <w>tokio</w>
+      <w>warudo</w>
       <w>yajuu</w>
     </words>
   </dictionary>
