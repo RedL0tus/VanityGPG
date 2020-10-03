@@ -1,6 +1,4 @@
 /target
-/gpg/*
-!/gpg/.keepdir
 .env
 .out
 .direnv
