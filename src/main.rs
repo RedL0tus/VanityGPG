@@ -61,7 +61,7 @@ struct Opts {
     #[clap(
         short = 's',
         long = "pool_size",
-        about = "Number of keys being shuffled concurrently",
+        about = "Number of keys being shuffled concurrently. ",
         default_value = "100000"
     )]
     pool_size: usize,
@@ -77,7 +77,8 @@ struct Opts {
         short = 'c',
         long = "cipher-suite",
         about = "Cipher suite",
-        default_value = "RSA4096"
+        default_value = "Ed25519",
+        possible_values = &[ "Ed25519", "RSA2048", "RSA3072", "RSA4096", "NISTP256", "NISTP384", "NISTP521" ],
     )]
     cipher_suite: String,
     /// User ID
