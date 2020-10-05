@@ -14,17 +14,26 @@ categories = [ "command-line-utilities" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "za_warudo" ]
+default = [ "za_warudo", "rpgp" ]
 za_warudo = [ ]
+sequoia = [ "sequoia-openpgp" ]
+rpgp = [ "hex", "pgp", "rand", "sha-1", "chrono", "smallvec", "byteorder" ]
 
 [dependencies]
 log = { version = "^0.4", features = [ "std" ] }
+hex = { version = "^0.4", optional = true }
+pgp = { version = "^0.7", optional = true }
 clap = "3.0.0-beta.2"
+rand = { version = "^0.7", optional = true }
 rayon = "^1.4"
 regex = "^1.3"
+sha-1 = { version = "^0.9", optional = true }
+chrono = { version = "^0.4", optional = true }
 anyhow = "^1.0"
 colored = "^2.0"
+smallvec = { version = "^1.4", optional = true }
 backtrace = "^0.3"
+byteorder = { version = "^1.3", optional = true }
 indicatif = "^0.14"
 thiserror = "^1.0"
-sequoia-openpgp = "^0.19"
+sequoia-openpgp = { version = "^0.19", optional = true }

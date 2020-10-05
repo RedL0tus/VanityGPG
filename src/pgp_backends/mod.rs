@@ -1,13 +1,24 @@
+#[cfg(feature = "rpgp")]
+mod rpgp_backend;
+#[cfg(feature = "sequoia")]
 mod sequoia;
 
 pub use anyhow::Error as UniversalError;
 use thiserror::Error;
 
+#[cfg(feature = "sequoia")]
 pub use sequoia::SequoiaBackend;
+
+#[cfg(feature = "rpgp")]
+pub use rpgp_backend::RPGPBackend;
 
 use std::str::FromStr;
 
+#[cfg(feature = "sequoia")]
 pub type DefaultBackend = SequoiaBackend;
+
+#[cfg(feature = "rpgp")]
+pub type DefaultBackend = RPGPBackend;
 
 #[derive(Clone, Debug, Error)]
 pub enum PGPError {

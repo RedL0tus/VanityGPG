@@ -1,11 +1,14 @@
 <component name="ProjectDictionaryState">
   <dictionary name="kay">
     <words>
+      <w>chrono</w>
       <w>eddsa</w>
       <w>gpgme</w>
       <w>indicatif</w>
       <w>nistp</w>
+      <w>rpgp</w>
       <w>senpai</w>
+      <w>smallvec</w>
       <w>subkey</w>
       <w>thiserror</w>
       <w>tokio</w>
