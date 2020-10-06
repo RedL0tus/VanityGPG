@@ -295,8 +295,6 @@ fn main() -> Result<(), Error> {
                 } else {
                     info!("({}): [{}] is not a match", thread_id, fingerprint);
                     reshuffle_counter -= 1;
-                    #[cfg(not(feature = "za_warudo"))]
-                    thread::sleep(Duration::from_secs(1));
                     key.shuffle().unwrap_or(());
                 }
                 report_counter += 1;

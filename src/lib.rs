@@ -3,7 +3,6 @@
 //! It works.
 
 extern crate anyhow;
-#[cfg(feature = "rpgp")]
 extern crate byteorder;
 #[cfg(feature = "rpgp")]
 extern crate chrono;

@@ -1,29 +1,31 @@
 //! Sequoia-OpenPGP backend
 
+use byteorder::{BigEndian, ByteOrder};
+use log::warn;
 use sequoia_openpgp::armor::{Kind, Writer};
 use sequoia_openpgp::packet::key::{Key4, PrimaryRole, SecretParts};
 use sequoia_openpgp::packet::signature::SignatureBuilder;
 use sequoia_openpgp::packet::Key;
 use sequoia_openpgp::packet::UserID as SequoiaUserID;
-use sequoia_openpgp::serialize::SerializeInto;
+use sequoia_openpgp::serialize::{MarshalInto, SerializeInto};
 use sequoia_openpgp::types::{
     Curve as SequoiaCurve, Features, HashAlgorithm, KeyFlags, SignatureType, SymmetricAlgorithm,
 };
-use sequoia_openpgp::{Cert, Packet};
+use sequoia_openpgp::{Cert, Fingerprint, Packet};
 
 use super::{
     Algorithms, ArmoredKey, Backend, CipherSuite, Curve, PGPError, UniversalError, UserID, RSA,
 };
 
 use std::io::Write;
-#[cfg(feature = "za_warudo")]
 use std::time::Duration;
-#[cfg(not(feature = "za_warudo"))]
-use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
 pub struct SequoiaBackend {
     primary_key: Key4<SecretParts, PrimaryRole>,
     cipher_suite: CipherSuite,
+    timestamp: u32,
+    packet_cache: Vec<u8>,
 }
 
 fn generate_key(
@@ -53,37 +55,25 @@ fn generate_key(
 
 impl Backend for SequoiaBackend {
     fn fingerprint(&self) -> String {
-        self.primary_key.fingerprint().to_hex()
+        let mut hasher = HashAlgorithm::SHA1.context().unwrap();
+        hasher.update(&self.packet_cache);
+        let mut digest = vec![0u8; hasher.digest_size()];
+        hasher.digest(&mut digest);
+        Fingerprint::from_bytes(&digest).to_hex()
     }
 
-    #[cfg(not(feature = "za_warudo"))]
     fn shuffle(&mut self) -> Result<(), PGPError> {
-        self.creation_time = SystemTime::now();
-        if self
-            .primary_key
-            .set_creation_time(self.creation_time)
-            .is_ok()
-        {
-            Ok(())
-        } else {
-            Err(PGPError::FailedToModifyGenerationTime)
-        }
+        self.timestamp -= 1;
+        BigEndian::write_u32(&mut self.packet_cache[4..8], self.timestamp);
+        Ok(())
     }
 
-    #[cfg(feature = "za_warudo")]
-    fn shuffle(&mut self) -> Result<(), PGPError> {
-        let creation_time = self.primary_key.creation_time() - Duration::from_secs(1);
-        if self.primary_key.set_creation_time(creation_time).is_ok() {
-            Ok(())
-        } else {
-            Err(PGPError::FailedToModifyGenerationTime)
-        }
-    }
-
-    fn get_armored_results(self, uid: &UserID) -> Result<ArmoredKey, UniversalError> {
+    fn get_armored_results(mut self, uid: &UserID) -> Result<ArmoredKey, UniversalError> {
+        let creation_time = UNIX_EPOCH.clone() + Duration::from_secs(self.timestamp as u64);
+        self.primary_key.set_creation_time(creation_time)?;
+        warn!("Exporting: {}", self.primary_key.fingerprint().to_hex());
         let mut packets = Vec::<Packet>::new();
         let mut signer = self.primary_key.clone().into_keypair()?;
-        let creation_time = self.primary_key.creation_time();
         let primary_key_packet = Key::V4(self.primary_key);
 
         // Direct key signature and the secret key
@@ -137,8 +127,8 @@ impl Backend for SequoiaBackend {
 
         if cert.unknowns().next().is_none() {
             // Get armored texts
-            let armored_public_key = String::from_utf8(cert.armored().to_vec()?)?;
-            let private_hex = cert.as_tsk().to_vec()?;
+            let armored_public_key = String::from_utf8(SerializeInto::to_vec(&cert.armored())?)?;
+            let private_hex = SerializeInto::to_vec(&cert.as_tsk())?;
             let mut private_key_writer = Writer::new(Vec::new(), Kind::SecretKey)?;
             private_key_writer.write_all(&private_hex)?;
             let armored_private_key =
@@ -155,9 +145,27 @@ impl SequoiaBackend {
     pub fn new<C: Into<CipherSuite>>(cipher_suite: C) -> Result<Self, PGPError> {
         let ciphers = cipher_suite.into();
         let primary_key = generate_key(ciphers.get_signing_key_algorithm(), true)?;
+
+        // Build packet cache
+        let mut packet_cache: Vec<u8> = vec![0x99, 0, 0, 4, 0, 0, 0, 0];
+        let packet_length = 6 + primary_key.mpis().serialized_len() as u16;
+        BigEndian::write_u16(&mut packet_cache[1..3], packet_length); // Packet length
+        let timestamp = primary_key
+            .creation_time()
+            .duration_since(UNIX_EPOCH)
+            .expect("Failed to get timestamp")
+            .as_secs() as u32;
+        BigEndian::write_u32(&mut packet_cache[4..8], timestamp); // Timestamp
+        packet_cache.push(primary_key.pk_algo().into()); // Algorithm identifier
+        let mut public_key_buffer =
+            MarshalInto::to_vec(primary_key.mpis()).expect("Failed to serialize public key");
+        packet_cache.append(&mut public_key_buffer); // Public key
+
         Ok(Self {
             primary_key,
             cipher_suite: ciphers,
+            timestamp,
+            packet_cache,
         })
     }
 }

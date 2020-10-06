@@ -1,13 +1,13 @@
 #[cfg(feature = "rpgp")]
 mod rpgp_backend;
 #[cfg(feature = "sequoia")]
-mod sequoia;
+mod sequoia_backend;
 
 pub use anyhow::Error as UniversalError;
 use thiserror::Error;
 
 #[cfg(feature = "sequoia")]
-pub use sequoia::SequoiaBackend;
+pub use sequoia_backend::SequoiaBackend;
 
 #[cfg(feature = "rpgp")]
 pub use rpgp_backend::RPGPBackend;
