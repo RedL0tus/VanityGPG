@@ -9,7 +9,7 @@ A simple tool for generating and filtering vanity GPG keys (a.k.a. A OpenPGP key
 Install
 -------
 
-Currently(v0.3), VanityGPG offers two sets of backends. If you have `libclang` available in your system, the default sequoia backend is recommend. 
+Currently(v0.3), VanityGPG offers two sets of backends, [`Sequoia-OpenPGP`](https://sequoia-pgp.org/) and [`rPGP`](https://github.com/rpgp/rpgp). If you have `libclang` available in your system, the default sequoia backend is recommend. 
 
 Install dependencies (assuming you are using Ubuntu, bruh) for the sequoia backend:
 ```bash
@@ -36,18 +36,18 @@ With the following parameters:
 ./vanity_gpg -c Ed25519 -j4 -u "Kay Lin <i@v2bv.net>" -p "(8B){5,20}$|(B8){5,20}$|(EB){5,20}$|(BE){5,20}$|(EF){5,20}$|(FE){5,20}$|A{10,40}$|B{10,40}$|C{10,40}$|D{10,40}$|E{10,40}$|F{10,40}$|1{10,40}$|2{10,40}$|3{10,40}$|4{10,40}$|5{10,40}$|6{10,40}$|7{10,40}$|8{10,40}$|9{10,40}$|1145141919810$"
 ```
 
-|         System/Backend        |           Sequoia          |            rPGP            |
-|-------------------------------|----------------------------|----------------------------|
-| Tegra210@2.0GHz (Jetson Nano) |  ~5,000,000 fingerprints/s |  ~5,000,000 fingerprints/s |
-| Intel Xeon E3-1231 V3@3.4GHz  | ~10,000,000 fingerprints/s | ~10,000,000 fingerprints/s |
-|  Intel Core i7-8569U@2.8GHz   |  ~7,000,000 fingerprints/s |  ~7,000,000 fingerprints/s |
+|         System/Backend          |           Sequoia          |            rPGP            |
+|---------------------------------|----------------------------|----------------------------|
+| Tegra210 @ 2.0GHz (Jetson Nano) |  ~5,000,000 fingerprints/s |  ~5,000,000 fingerprints/s |
+| Intel Xeon E3-1231 V3 @ 3.4GHz  | ~10,000,000 fingerprints/s | ~10,000,000 fingerprints/s |
+|  Intel Core i7-8569U @ 2.8GHz   |  ~7,000,000 fingerprints/s |  ~7,000,000 fingerprints/s |
 
 Credits
 -------
 
-`Sequoia-OpenPGP` and the `rPGP` team for their awesome works.
+[`Sequoia-OpenPGP`](https://sequoia-pgp.org/) and the [`rPGP`](https://github.com/rpgp/rpgp) teams for their awesome works.
 
-@nwalfield for the extremely helpful tips that improves VanityGPG's performance for several orders of magnitude.
+[@nwalfield](https://github.com/nwalfield) for the extremely helpful tips that improves VanityGPG's performance for several orders of magnitude ([#2](https://github.com/RedL0tus/VanityGPG/issues/2)).
 
 Usage
 -----
