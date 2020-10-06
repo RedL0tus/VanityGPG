@@ -1,7 +1,6 @@
 //! Sequoia-OpenPGP backend
 
 use byteorder::{BigEndian, ByteOrder};
-use log::warn;
 use sequoia_openpgp::armor::{Kind, Writer};
 use sequoia_openpgp::packet::key::{Key4, PrimaryRole, SecretParts};
 use sequoia_openpgp::packet::signature::SignatureBuilder;
@@ -71,7 +70,6 @@ impl Backend for SequoiaBackend {
     fn get_armored_results(mut self, uid: &UserID) -> Result<ArmoredKey, UniversalError> {
         let creation_time = UNIX_EPOCH.clone() + Duration::from_secs(self.timestamp as u64);
         self.primary_key.set_creation_time(creation_time)?;
-        warn!("Exporting: {}", self.primary_key.fingerprint().to_hex());
         let mut packets = Vec::<Packet>::new();
         let mut signer = self.primary_key.clone().into_keypair()?;
         let primary_key_packet = Key::V4(self.primary_key);
