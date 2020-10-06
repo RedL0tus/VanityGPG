@@ -6,7 +6,6 @@ extern crate anyhow;
 extern crate byteorder;
 #[cfg(feature = "rpgp")]
 extern crate chrono;
-#[cfg(feature = "rpgp")]
 extern crate hex;
 #[cfg(feature = "rpgp")]
 extern crate pgp;
@@ -14,7 +13,6 @@ extern crate pgp;
 extern crate rand;
 #[cfg(feature = "sequoia")]
 extern crate sequoia_openpgp;
-#[cfg(feature = "rpgp")]
 extern crate sha1;
 #[cfg(feature = "rpgp")]
 extern crate smallvec;

@@ -1,6 +1,7 @@
 //! Sequoia-OpenPGP backend
 
 use byteorder::{BigEndian, ByteOrder};
+use hex::encode_upper;
 use sequoia_openpgp::armor::{Kind, Writer};
 use sequoia_openpgp::packet::key::{Key4, PrimaryRole, SecretParts};
 use sequoia_openpgp::packet::signature::SignatureBuilder;
@@ -10,7 +11,8 @@ use sequoia_openpgp::serialize::{MarshalInto, SerializeInto};
 use sequoia_openpgp::types::{
     Curve as SequoiaCurve, Features, HashAlgorithm, KeyFlags, SignatureType, SymmetricAlgorithm,
 };
-use sequoia_openpgp::{Cert, Fingerprint, Packet};
+use sequoia_openpgp::{Cert, Packet};
+use sha1::{Digest, Sha1};
 
 use super::{
     Algorithms, ArmoredKey, Backend, CipherSuite, Curve, PGPError, UniversalError, UserID, RSA,
@@ -54,11 +56,9 @@ fn generate_key(
 
 impl Backend for SequoiaBackend {
     fn fingerprint(&self) -> String {
-        let mut hasher = HashAlgorithm::SHA1.context().unwrap();
+        let mut hasher = Sha1::new();
         hasher.update(&self.packet_cache);
-        let mut digest = vec![0u8; hasher.digest_size()];
-        hasher.digest(&mut digest);
-        Fingerprint::from_bytes(&digest).to_hex()
+        encode_upper(hasher.finalize().to_vec())
     }
 
     fn shuffle(&mut self) -> Result<(), PGPError> {
