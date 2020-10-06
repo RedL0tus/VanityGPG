@@ -30,11 +30,11 @@ cargo install vanity_gpg --no-default-features --features rpgp
 Performance
 -----------
 
-|         System/Backend        |          Sequoia          |            rPGP            |
-|-------------------------------|---------------------------|----------------------------|
-| Tegra210@2.0GHz (Jetson Nano) | ~3,500,000 fingerprints/s |  ~5,000,000 fingerprints/s |
-| Intel Xeon E3-1231 V3@3.4GHz  | ~7,000,000 fingerprints/s | ~10,000,000 fingerprints/s |
-|  Intel Core i7-8569U@2.8GHz   | ~2,800,000 fingerprints/s |  ~7,000,000 fingerprints/s |
+|         System/Backend        |           Sequoia          |            rPGP            |
+|-------------------------------|----------------------------|----------------------------|
+| Tegra210@2.0GHz (Jetson Nano) |  ~5,000,000 fingerprints/s |  ~5,000,000 fingerprints/s |
+| Intel Xeon E3-1231 V3@3.4GHz  | ~10,000,000 fingerprints/s | ~10,000,000 fingerprints/s |
+|  Intel Core i7-8569U@2.8GHz   |  ~7,000,000 fingerprints/s |  ~7,000,000 fingerprints/s |
 
 Credits
 -------
