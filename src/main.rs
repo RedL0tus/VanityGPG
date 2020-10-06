@@ -139,7 +139,7 @@ fn setup_panic_hook() {
         println!("Traceback:");
         println!("{:#?}", Backtrace::new());
         println!();
-        println!("Please report this panic to {}/issues", PKG_REPOSITORY);
+        println!("Please report this error to {}/issues", PKG_REPOSITORY);
     }));
 }
 
@@ -169,7 +169,7 @@ fn setup_summary<B: ProgressLoggerBackend>(logger_backend: Arc<Mutex<B>>, counte
         debug!("Updating counter information");
         let secs_elapsed = start.elapsed().as_secs();
         logger_backend.lock().unwrap().set_message(&format!(
-            "Summary: {} (avg. {:.2} tries/s)",
+            "Summary: {} (avg. {:.2} fingerprint(s)/s)",
             &counter,
             counter.get_total() as f64 / secs_elapsed as f64
         ));
@@ -205,7 +205,7 @@ impl fmt::Display for Counter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} success, {} tries total",
+            "{} matched, {} fingerprints generated total",
             self.get_success(),
             self.get_total(),
         )
