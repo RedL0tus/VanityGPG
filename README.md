@@ -30,6 +30,12 @@ cargo install vanity_gpg --no-default-features --features rpgp
 Performance
 -----------
 
+With the following parameters:
+
+```bash
+./vanity_gpg -c Ed25519 -j4 -u "Kay Lin <i@v2bv.net>" -p "(8B){5,20}$|(B8){5,20}$|(EB){5,20}$|(BE){5,20}$|(EF){5,20}$|(FE){5,20}$|A{10,40}$|B{10,40}$|C{10,40}$|D{10,40}$|E{10,40}$|F{10,40}$|1{10,40}$|2{10,40}$|3{10,40}$|4{10,40}$|5{10,40}$|6{10,40}$|7{10,40}$|8{10,40}$|9{10,40}$|1145141919810$"
+```
+
 |         System/Backend        |           Sequoia          |            rPGP            |
 |-------------------------------|----------------------------|----------------------------|
 | Tegra210@2.0GHz (Jetson Nano) |  ~5,000,000 fingerprints/s |  ~5,000,000 fingerprints/s |
