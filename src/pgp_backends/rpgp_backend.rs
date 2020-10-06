@@ -1,4 +1,6 @@
 //! rPGP backend
+//!
+//! This is a wrapper of the `rPGP` crate for generating vanity OpenPGP keys.
 
 use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, TimeZone, Utc};
@@ -58,6 +60,7 @@ pub struct RPGPBackend {
     packet_cache: Vec<u8>,
 }
 
+/// Generate key with the required `CipherSuite`
 // So messy, wow
 fn generate_key(
     cipher_suite: &CipherSuite,
@@ -112,6 +115,7 @@ impl Into<PublicSubkeyPacket> for PublicKeyPacketConverter {
 }
 
 impl PublicKeyPacketConverter {
+    /// Create new instance
     fn new(algorithm: PublicKeyAlgorithm, public_params: PublicParams, created_at: u32) -> Self {
         Self {
             packet_version: Version::New,
@@ -132,6 +136,7 @@ impl Into<SecretKeyPacket> for SecretKeyPacketConverter {
 }
 
 impl SecretKeyPacketConverter {
+    /// Create new instance
     fn new(details: PublicKeyPacket, secret_params: SecretParams) -> Self {
         Self {
             details,
@@ -148,6 +153,7 @@ impl Into<SecretSubkeyPacket> for SecretSubkeyPacketConverter {
 }
 
 impl SecretSubkeyPacketConverter {
+    /// Create new instance
     fn new(details: PublicSubkeyPacket, secret_params: SecretParams) -> Self {
         Self {
             details,
@@ -230,6 +236,7 @@ impl Backend for RPGPBackend {
 }
 
 impl RPGPBackend {
+    /// Create new instance
     pub fn new<C: Into<CipherSuite>>(cipher_suite: C) -> Result<Self, PGPError> {
         let valid_cipher_suite = cipher_suite.into();
         if let Ok((key_type, public_params, secret_params)) =
@@ -255,5 +262,179 @@ impl RPGPBackend {
         } else {
             Err(PGPError::KeyGenerationFailed)
         }
+    }
+
+    #[allow(dead_code)]
+    /// Get public params
+    pub(crate) fn get_public_params(self) -> PublicParams {
+        self.public_params
+    }
+
+    #[allow(dead_code)]
+    /// Get `u32` timestamp
+    // Boo! You've just found something that will go wrong after the year 2038
+    pub(crate) fn get_timestamp(&self) -> u32 {
+        self.timestamp
+    }
+}
+
+#[cfg(test)]
+mod rpgp_backend_test {
+    use super::{
+        Backend, CipherSuite, PublicKeyAlgorithm, PublicKeyPacket, PublicKeyPacketConverter,
+        RPGPBackend, UserID,
+    };
+    use hex::encode_upper;
+    use pgp::composed::{Deserializable, SignedSecretKey};
+    use pgp::types::KeyTrait;
+    use std::io::Cursor;
+
+    #[test]
+    fn ed25519_key_generation() {
+        let backend = RPGPBackend::new(CipherSuite::Curve25519).unwrap();
+        let timestamp = backend.get_timestamp();
+        let public_params = backend.get_public_params();
+        let _public_key_packet: PublicKeyPacket =
+            PublicKeyPacketConverter::new(PublicKeyAlgorithm::EdDSA, public_params, timestamp)
+                .into();
+    }
+
+    #[test]
+    fn ed25519_fingerprint_calculation() {
+        let backend = RPGPBackend::new(CipherSuite::Curve25519).unwrap();
+        let fingerprint_custom = backend.fingerprint();
+        let timestamp = backend.get_timestamp();
+        let public_params = backend.get_public_params();
+        let public_key_packet: PublicKeyPacket =
+            PublicKeyPacketConverter::new(PublicKeyAlgorithm::EdDSA, public_params, timestamp)
+                .into();
+        let fingerprint_rpgp = encode_upper(public_key_packet.fingerprint());
+
+        assert_eq!(fingerprint_custom, fingerprint_rpgp);
+    }
+
+    #[test]
+    fn ed25519_shuffle() {
+        let mut backend = RPGPBackend::new(CipherSuite::Curve25519).unwrap();
+        let fingerprint_custom_before = backend.fingerprint();
+        let timestamp_before = backend.get_timestamp();
+        backend.shuffle().unwrap();
+        let fingerprint_custom_after = backend.fingerprint();
+        let timestamp_after = backend.get_timestamp();
+        assert_ne!(timestamp_before, timestamp_after);
+
+        let public_params = backend.get_public_params();
+        let public_key_packet_before: PublicKeyPacket = PublicKeyPacketConverter::new(
+            PublicKeyAlgorithm::EdDSA,
+            public_params.clone(),
+            timestamp_before,
+        )
+        .into();
+        let fingerprint_rpgp_before = encode_upper(public_key_packet_before.fingerprint());
+        let public_key_packet_after: PublicKeyPacket = PublicKeyPacketConverter::new(
+            PublicKeyAlgorithm::EdDSA,
+            public_params,
+            timestamp_after,
+        )
+        .into();
+        let fingerprint_rpgp_after = encode_upper(public_key_packet_after.fingerprint());
+
+        assert_eq!(fingerprint_custom_before, fingerprint_rpgp_before);
+        assert_eq!(fingerprint_custom_after, fingerprint_rpgp_after);
+    }
+
+    #[test]
+    fn ed25519_export() {
+        let mut backend = RPGPBackend::new(CipherSuite::Curve25519).unwrap();
+        backend.shuffle().unwrap();
+        let fingerprint_before = backend.fingerprint();
+        let uid = UserID::from("Tiansuo Li <114514@example.com>".to_string());
+        let results = backend.get_armored_results(&uid).unwrap();
+        assert!(!results.get_private_key().is_empty());
+        assert!(!results.get_public_key().is_empty());
+
+        let cursor = Cursor::new(results.get_private_key());
+
+        let key = SignedSecretKey::from_armor_single(cursor).unwrap().0;
+        let fingerprint_after = encode_upper(key.fingerprint());
+        assert_eq!(fingerprint_before, fingerprint_after);
+        assert_eq!(key.algorithm(), PublicKeyAlgorithm::EdDSA);
+        assert_eq!(
+            &key.details.users[0].id.id(),
+            &"Tiansuo Li <114514@example.com>"
+        );
+        key.verify().unwrap();
+    }
+
+    #[test]
+    fn rsa2048_key_generation() {
+        let backend = RPGPBackend::new(CipherSuite::RSA2048).unwrap();
+        let timestamp = backend.get_timestamp();
+        let public_params = backend.get_public_params();
+        let _public_key_packet: PublicKeyPacket =
+            PublicKeyPacketConverter::new(PublicKeyAlgorithm::RSA, public_params, timestamp).into();
+    }
+
+    #[test]
+    fn rsa2048_fingerprint_calculation() {
+        let backend = RPGPBackend::new(CipherSuite::RSA2048).unwrap();
+        let fingerprint_custom = backend.fingerprint();
+        let timestamp = backend.get_timestamp();
+        let public_params = backend.get_public_params();
+        let public_key_packet: PublicKeyPacket =
+            PublicKeyPacketConverter::new(PublicKeyAlgorithm::RSA, public_params, timestamp).into();
+        let fingerprint_rpgp = encode_upper(public_key_packet.fingerprint());
+
+        assert_eq!(fingerprint_custom, fingerprint_rpgp);
+    }
+
+    #[test]
+    fn rsa2048_shuffle() {
+        let mut backend = RPGPBackend::new(CipherSuite::RSA2048).unwrap();
+        let fingerprint_custom_before = backend.fingerprint();
+        let timestamp_before = backend.get_timestamp();
+        backend.shuffle().unwrap();
+        let fingerprint_custom_after = backend.fingerprint();
+        let timestamp_after = backend.get_timestamp();
+        assert_ne!(timestamp_before, timestamp_after);
+
+        let public_params = backend.get_public_params();
+        let public_key_packet_before: PublicKeyPacket = PublicKeyPacketConverter::new(
+            PublicKeyAlgorithm::RSA,
+            public_params.clone(),
+            timestamp_before,
+        )
+        .into();
+        let fingerprint_rpgp_before = encode_upper(public_key_packet_before.fingerprint());
+        let public_key_packet_after: PublicKeyPacket =
+            PublicKeyPacketConverter::new(PublicKeyAlgorithm::RSA, public_params, timestamp_after)
+                .into();
+        let fingerprint_rpgp_after = encode_upper(public_key_packet_after.fingerprint());
+
+        assert_eq!(fingerprint_custom_before, fingerprint_rpgp_before);
+        assert_eq!(fingerprint_custom_after, fingerprint_rpgp_after);
+    }
+
+    #[test]
+    fn rsa2048_export() {
+        let mut backend = RPGPBackend::new(CipherSuite::RSA2048).unwrap();
+        backend.shuffle().unwrap();
+        let fingerprint_before = backend.fingerprint();
+        let uid = UserID::from("Tiansuo Li <114514@example.com>".to_string());
+        let results = backend.get_armored_results(&uid).unwrap();
+        assert!(!results.get_private_key().is_empty());
+        assert!(!results.get_public_key().is_empty());
+
+        let cursor = Cursor::new(results.get_private_key());
+
+        let key = SignedSecretKey::from_armor_single(cursor).unwrap().0;
+        let fingerprint_after = encode_upper(key.fingerprint());
+        assert_eq!(fingerprint_before, fingerprint_after);
+        assert_eq!(key.algorithm(), PublicKeyAlgorithm::RSA);
+        assert_eq!(
+            &key.details.users[0].id.id(),
+            &"Tiansuo Li <114514@example.com>"
+        );
+        key.verify().unwrap();
     }
 }

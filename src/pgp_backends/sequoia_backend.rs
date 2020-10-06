@@ -1,4 +1,6 @@
 //! Sequoia-OpenPGP backend
+//!
+//! This is a wrapper of the `Sequoia-OpenPGP` crate for generating vanity OpenPGP keys.
 
 use byteorder::{BigEndian, ByteOrder};
 use hex::encode_upper;
@@ -22,6 +24,7 @@ use std::io::Write;
 use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
+/// The `Sequoia-OpenPGP` backend wrapper
 pub struct SequoiaBackend {
     primary_key: Key4<SecretParts, PrimaryRole>,
     cipher_suite: CipherSuite,
@@ -29,6 +32,7 @@ pub struct SequoiaBackend {
     packet_cache: Vec<u8>,
 }
 
+/// Generate key with the required `CipherSuite`
 fn generate_key(
     algorithm: Algorithms,
     for_signing: bool,
@@ -140,6 +144,7 @@ impl Backend for SequoiaBackend {
 }
 
 impl SequoiaBackend {
+    /// Create new instance
     pub fn new<C: Into<CipherSuite>>(cipher_suite: C) -> Result<Self, PGPError> {
         let ciphers = cipher_suite.into();
         let primary_key = generate_key(ciphers.get_signing_key_algorithm(), true)?;
@@ -165,5 +170,172 @@ impl SequoiaBackend {
             timestamp,
             packet_cache,
         })
+    }
+
+    /// Get primary key
+    #[allow(dead_code)]
+    pub(crate) fn get_primary_key(self) -> Key4<SecretParts, PrimaryRole> {
+        self.primary_key
+    }
+
+    /// Get `u32` timestamp
+    // Boo! You've just found something that will go wrong after the year 2038
+    #[allow(dead_code)]
+    pub(crate) fn get_timestamp(&self) -> u32 {
+        self.timestamp
+    }
+}
+
+#[cfg(test)]
+mod sequoia_backend_test {
+    use super::{Backend, Cert, CipherSuite, Key, SequoiaBackend, UserID};
+    use anyhow::Error;
+    use sequoia_openpgp::armor::{Reader, ReaderMode};
+    use sequoia_openpgp::parse::Parse;
+    use sequoia_openpgp::types::PublicKeyAlgorithm;
+    use std::io::{Cursor, Read};
+    use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn ed25519_key_generation() {
+        let backend = SequoiaBackend::new(CipherSuite::Curve25519).unwrap();
+        let key = backend.get_primary_key();
+        assert_eq!(key.pk_algo(), PublicKeyAlgorithm::EdDSA);
+    }
+
+    #[test]
+    fn ed25519_fingerprint_calculation() {
+        let backend = SequoiaBackend::new(CipherSuite::Curve25519).unwrap();
+        let fingerprint_custom = backend.fingerprint();
+        let fingerprint_sequoia = backend.get_primary_key().fingerprint().to_hex();
+        assert_eq!(fingerprint_custom, fingerprint_sequoia);
+    }
+
+    #[test]
+    fn ed25519_shuffle() {
+        let mut backend = SequoiaBackend::new(CipherSuite::Curve25519).unwrap();
+        let fingerprint_custom_before = backend.fingerprint();
+        let timestamp_before = backend.get_timestamp() as u64;
+        backend.shuffle().unwrap();
+        let fingerprint_custom_after = backend.fingerprint();
+        let timestamp_after = backend.get_timestamp() as u64;
+        assert_ne!(timestamp_before, timestamp_after);
+
+        let mut primary_key = backend.get_primary_key();
+        primary_key
+            .set_creation_time(UNIX_EPOCH.clone() + Duration::from_secs(timestamp_before))
+            .unwrap();
+        let fingerprint_sequoia_before = primary_key.fingerprint().to_hex();
+        primary_key
+            .set_creation_time(UNIX_EPOCH.clone() + Duration::from_secs(timestamp_after))
+            .unwrap();
+        let fingerprint_sequoia_after = primary_key.fingerprint().to_hex();
+
+        assert_eq!(fingerprint_custom_before, fingerprint_sequoia_before);
+        assert_eq!(fingerprint_custom_after, fingerprint_sequoia_after);
+    }
+
+    #[test]
+    fn ed25519_export() {
+        let mut backend = SequoiaBackend::new(CipherSuite::Curve25519).unwrap();
+        backend.shuffle().unwrap();
+        let fingerprint_before = backend.fingerprint();
+        let uid = UserID::from("Tiansuo Li <114514@example.com>".to_string());
+        let results = backend.get_armored_results(&uid).unwrap();
+        assert!(!results.get_private_key().is_empty());
+        assert!(!results.get_public_key().is_empty());
+
+        let mut cursor = Cursor::new(results.get_private_key());
+        let mut reader = Reader::new(&mut cursor, ReaderMode::VeryTolerant);
+        let mut content = Vec::new();
+        reader.read_to_end(&mut content).unwrap();
+        let cert = Cert::from_bytes(&content).unwrap();
+        let fingerprint_after = cert.fingerprint().to_hex();
+        assert_eq!(fingerprint_before, fingerprint_after);
+        assert!(cert.is_tsk());
+        assert!(cert.bad_signatures().is_empty());
+        for uid_after in cert.userids() {
+            assert_eq!(
+                String::from_utf8_lossy(uid_after.value()),
+                "Tiansuo Li <114514@example.com>"
+            );
+        }
+        let pk = match cert.primary_key().key().clone() {
+            Key::V4(key_4) => key_4,
+            _ => unreachable!(),
+        };
+        assert_eq!(pk.pk_algo(), PublicKeyAlgorithm::EdDSA);
+    }
+
+    #[test]
+    fn rsa4096_key_generation() {
+        let backend = SequoiaBackend::new(CipherSuite::RSA4096).unwrap();
+        let key = backend.get_primary_key();
+        assert_eq!(key.pk_algo(), PublicKeyAlgorithm::RSAEncryptSign);
+    }
+
+    #[test]
+    fn rsa4096_fingerprint_calculation() {
+        let backend = SequoiaBackend::new(CipherSuite::RSA4096).unwrap();
+        let fingerprint_custom = backend.fingerprint();
+        let fingerprint_sequoia = backend.get_primary_key().fingerprint().to_hex();
+        assert_eq!(fingerprint_custom, fingerprint_sequoia);
+    }
+
+    #[test]
+    fn rsa4096_shuffle() {
+        let mut backend = SequoiaBackend::new(CipherSuite::RSA4096).unwrap();
+        let fingerprint_custom_before = backend.fingerprint();
+        let timestamp_before = backend.get_timestamp() as u64;
+        backend.shuffle().unwrap();
+        let fingerprint_custom_after = backend.fingerprint();
+        let timestamp_after = backend.get_timestamp() as u64;
+        assert_ne!(timestamp_before, timestamp_after);
+
+        let mut primary_key = backend.get_primary_key();
+        primary_key
+            .set_creation_time(UNIX_EPOCH.clone() + Duration::from_secs(timestamp_before))
+            .unwrap();
+        let fingerprint_sequoia_before = primary_key.fingerprint().to_hex();
+        primary_key
+            .set_creation_time(UNIX_EPOCH.clone() + Duration::from_secs(timestamp_after))
+            .unwrap();
+        let fingerprint_sequoia_after = primary_key.fingerprint().to_hex();
+
+        assert_eq!(fingerprint_custom_before, fingerprint_sequoia_before);
+        assert_eq!(fingerprint_custom_after, fingerprint_sequoia_after);
+    }
+
+    #[test]
+    fn rsa4096_export() -> Result<(), Error> {
+        let mut backend = SequoiaBackend::new(CipherSuite::RSA4096).unwrap();
+        backend.shuffle().unwrap();
+        let fingerprint_before = backend.fingerprint();
+        let uid = UserID::from("Tiansuo Li <114514@example.com>".to_string());
+        let results = backend.get_armored_results(&uid).unwrap();
+        assert!(!results.get_private_key().is_empty());
+        assert!(!results.get_public_key().is_empty());
+
+        let mut cursor = Cursor::new(results.get_private_key());
+        let mut reader = Reader::new(&mut cursor, ReaderMode::VeryTolerant);
+        let mut content = Vec::new();
+        reader.read_to_end(&mut content).unwrap();
+        let cert = Cert::from_bytes(&content).unwrap();
+        let fingerprint_after = cert.fingerprint().to_hex();
+        assert_eq!(fingerprint_before, fingerprint_after);
+        assert!(cert.is_tsk());
+        assert!(cert.bad_signatures().is_empty());
+        for uid_after in cert.userids() {
+            assert_eq!(
+                String::from_utf8_lossy(uid_after.value()),
+                "Tiansuo Li <114514@example.com>"
+            );
+        }
+        let pk = match cert.primary_key().key().clone() {
+            Key::V4(key_4) => key_4,
+            _ => unreachable!(),
+        };
+        assert_eq!(pk.pk_algo(), PublicKeyAlgorithm::RSAEncryptSign);
+        Ok(())
     }
 }

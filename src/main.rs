@@ -1,6 +1,7 @@
 //! # VanityGPG (default binary)
 //!
 //! A simple tool for generating and filtering vanity GPG keys, c0nCurr3nt1Y.
+//! (a.k.a. OpenPGP key fingerprint collision tool)
 
 extern crate backtrace;
 extern crate clap;
@@ -104,12 +105,14 @@ struct Opts {
     verbose: u8,
 }
 
+/// Counter for statistics
 #[derive(Debug)]
 struct Counter {
     total: AtomicUsize,
     success: AtomicUsize,
 }
 
+/// Wrapper for the backends
 #[derive(Debug)]
 struct Key<B: Backend> {
     backend: B,
@@ -177,6 +180,7 @@ fn setup_summary<B: ProgressLoggerBackend>(logger_backend: Arc<Mutex<B>>, counte
 }
 
 impl Counter {
+    /// Create new instance
     fn new() -> Self {
         Self {
             total: AtomicUsize::new(0),
@@ -184,18 +188,22 @@ impl Counter {
         }
     }
 
+    /// Count towards total numbers of fingerprints generated
     fn count_total(&self, accumulated_counts: usize) {
         self.total.fetch_add(accumulated_counts, Ordering::SeqCst);
     }
 
+    /// Count towards total numbers of fingerprints matched
     fn count_success(&self) {
         self.success.fetch_add(1, Ordering::SeqCst);
     }
 
+    /// Get number of total fingerprints generated
     fn get_total(&self) -> usize {
         self.total.load(Ordering::SeqCst)
     }
 
+    /// Get number of total fingerprints matched
     fn get_success(&self) -> usize {
         self.success.load(Ordering::SeqCst)
     }
@@ -213,18 +221,22 @@ impl fmt::Display for Counter {
 }
 
 impl<B: Backend> Key<B> {
+    /// Create new instance
     fn new(backend: B) -> Key<B> {
         Key { backend }
     }
 
+    /// Get fingerprint
     fn get_fingerprint(&self) -> String {
         self.backend.fingerprint()
     }
 
+    /// Rehash the key
     fn shuffle(&mut self) -> Result<(), Error> {
         Ok(self.backend.shuffle()?)
     }
 
+    /// Save armored keys
     fn save_key(self, user_id: &UserID, dry_run: bool) -> Result<(), Error> {
         if dry_run {
             return Ok(());

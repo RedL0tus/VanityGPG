@@ -1,3 +1,7 @@
+//! OpenPGP processing backends
+//!
+//! This module contains adapters or wrappers for different OpenPGP implementations.
+
 #[cfg(feature = "rpgp")]
 mod rpgp_backend;
 #[cfg(feature = "sequoia")]
@@ -14,12 +18,15 @@ pub use rpgp_backend::RPGPBackend;
 
 use std::str::FromStr;
 
+/// The default backend
 #[cfg(feature = "sequoia")]
 pub type DefaultBackend = SequoiaBackend;
 
-#[cfg(feature = "rpgp")]
+/// The default backend
+#[cfg(all(feature = "rpgp", not(feature = "sequoia")))]
 pub type DefaultBackend = RPGPBackend;
 
+/// Universal PGP errors
 #[derive(Clone, Debug, Error)]
 pub enum PGPError {
     #[error("Cipher suite not supported: {0}")]
@@ -36,6 +43,7 @@ pub enum PGPError {
     FailedToModifyGenerationTime,
 }
 
+/// Cipher suites for OpenPGP keys
 #[derive(Debug, Clone)]
 pub enum CipherSuite {
     RSA2048,
@@ -47,6 +55,7 @@ pub enum CipherSuite {
     NistP521,
 }
 
+/// Variations of RSA keys
 #[derive(Debug, Clone)]
 pub enum RSA {
     RSA2048,
@@ -54,6 +63,7 @@ pub enum RSA {
     RSA4096,
 }
 
+/// Variations of ECC curves
 #[derive(Debug, Clone)]
 pub enum Curve {
     Cv25519,
@@ -63,28 +73,35 @@ pub enum Curve {
     NistP521,
 }
 
+/// Algorithms
 #[derive(Debug, Clone)]
 pub enum Algorithms {
     RSA(RSA),
     ECC(Curve),
 }
 
+/// UserID
 #[derive(Debug, Clone)]
 pub struct UserID {
     id: Option<String>,
 }
 
+/// Wrapped armored keys
 #[derive(Debug, Clone)]
 pub struct ArmoredKey {
     public: String,
     private: String,
 }
 
+/// Backend adaptor trait
 pub trait Backend {
+    /// Get the fingerprint of the key
     fn fingerprint(&self) -> String;
 
+    /// Rehash the fingerprint
     fn shuffle(&mut self) -> Result<(), PGPError>;
 
+    /// Get armored secret key and public key
     fn get_armored_results(self, uid: &UserID) -> Result<ArmoredKey, UniversalError>;
 }
 
@@ -134,6 +151,7 @@ impl FromStr for CipherSuite {
 }
 
 impl CipherSuite {
+    /// Get the specific algorithm from cipher suite
     fn get_algorithm(&self, encryption: bool) -> Algorithms {
         match self {
             CipherSuite::RSA2048 => Algorithms::RSA(RSA::RSA2048),
@@ -152,22 +170,26 @@ impl CipherSuite {
         }
     }
 
+    /// Get singing key algorithm with the current cipher suite
     pub fn get_signing_key_algorithm(&self) -> Algorithms {
         self.get_algorithm(false)
     }
 
+    /// Get the encryption algorithm with the current cipher suite
     pub fn get_encryption_key_algorithm(&self) -> Algorithms {
         self.get_algorithm(true)
     }
 }
 
 impl UserID {
+    /// Unwrap the UserID
     pub fn get_id(&self) -> Option<String> {
         self.id.clone()
     }
 }
 
 impl ArmoredKey {
+    /// Create new instance
     pub fn new<S: Into<String>>(public: S, private: S) -> Self {
         Self {
             public: public.into(),
@@ -175,10 +197,12 @@ impl ArmoredKey {
         }
     }
 
+    /// Get a reference to the public key
     pub fn get_public_key(&self) -> &str {
         &self.public
     }
 
+    /// Get a reference to the private key
     pub fn get_private_key(&self) -> &str {
         &self.private
     }
