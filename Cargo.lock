@@ -1643,18 +1643,7 @@ dependencies = [
  "cfg-if",
  "cpuid-bool",
  "digest 0.9.0",
- "libc",
  "opaque-debug 0.3.0",
- "sha1-asm",
-]
-
-[[package]]
-name = "sha1-asm"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9dae2289dd5f5dc67fb0f341a5676c5c197415c51ce7345ae1bd0d36a6cbbfc"
-dependencies = [
- "cc",
 ]
 
 [[package]]
