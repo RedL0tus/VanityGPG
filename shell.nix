@@ -3,7 +3,7 @@ let
         config.allowUnfree = false;
         overlays = [ ];
     };
-    platform_dependencies = if nixpkgs.stdenv.hostPlatform.system == "x86_64-darwin" then "darwin.apple_sdk.frameworks.Security"
+    platform_dependencies = if nixpkgs.stdenv.hostPlatform.system == "x86_64-darwin" then nixpkgs.darwin.apple_sdk.frameworks.Security
         else "";
 in
     with nixpkgs;
