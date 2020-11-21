@@ -109,7 +109,7 @@ impl Backend for SequoiaBackend {
                 .set_hash_algo(HashAlgorithm::SHA512);
             let uid_packet = SequoiaUserID::from(uid_string);
             let uid_signature = uid_packet.bind(&mut signer, &cert, uid_signature_builder)?;
-            cert = cert.merge_packets(vec![Packet::from(uid_packet), uid_signature.into()])?;
+            cert = cert.insert_packets(vec![Packet::from(uid_packet), uid_signature.into()])?;
         }
 
         // Encryption subkey
@@ -125,7 +125,7 @@ impl Backend for SequoiaBackend {
             .set_key_flags(&KeyFlags::empty().set_storage_encryption())?
             .set_key_validity_period(None)?;
         let subkey_signature = subkey_packet.bind(&mut signer, &cert, subkey_signature_builder)?;
-        cert = cert.merge_packets(vec![
+        cert = cert.insert_packets(vec![
             Packet::SecretSubkey(subkey_packet),
             subkey_signature.into(),
         ])?;
