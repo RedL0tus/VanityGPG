@@ -14,7 +14,7 @@ categories = [ "command-line-utilities" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "sequoia" ]
+default = [ "sequoia", "jemalloc" ]
 sequoia = [ "sequoia-openpgp" ]
 rpgp = [ "pgp", "rand", "chrono", "smallvec" ]
 jemalloc = [ "jemallocator" ]
