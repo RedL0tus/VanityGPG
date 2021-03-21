@@ -16,7 +16,7 @@ categories = [ "command-line-utilities" ]
 [features]
 default = [ "sequoia", "jemalloc" ]
 sequoia = [ "sequoia-openpgp" ]
-rpgp = [ "pgp", "rand", "chrono", "smallvec" ]
+rpgp = [ "pgp", "rand", "chrono", "smallvec", "sha-1" ]
 jemalloc = [ "jemallocator" ]
 
 [dev-dependencies]
@@ -29,7 +29,7 @@ clap = "3.0.0-beta.2"
 rand = { version = "^0.7", optional = true }
 rayon = "^1.5"
 regex = "^1.4"
-sha-1 = { version = "^0.9", features = [ "asm", "compress" ] }
+sha-1 = { version = "^0.9", features = [ "asm", "compress" ], optional = true }
 anyhow = "^1.0"
 chrono = { version = "^0.4", optional = true }
 nettle = "^7.0"

@@ -19,6 +19,7 @@ extern crate pgp;
 extern crate rand;
 #[cfg(feature = "sequoia")]
 extern crate sequoia_openpgp;
+#[cfg(feature = "rpgp")]
 extern crate sha1;
 #[cfg(feature = "rpgp")]
 extern crate smallvec;
