@@ -17,6 +17,7 @@ categories = [ "command-line-utilities" ]
 default = [ "sequoia" ]
 sequoia = [ "sequoia-openpgp" ]
 rpgp = [ "pgp", "rand", "chrono", "smallvec" ]
+jemalloc = [ "jemallocator" ]
 
 [dev-dependencies]
 hex = "^0.4"
@@ -38,7 +39,7 @@ backtrace = "^0.3"
 byteorder = "^1.4"
 indicatif = "^0.15"
 thiserror = "^1.0"
-jemallocator = "^0.3"
+jemallocator = { version = "^0.3", optional = true }
 sequoia-openpgp = { version = "^1.1", optional = true }
 
 [profile.test]

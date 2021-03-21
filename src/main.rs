@@ -7,6 +7,7 @@ extern crate backtrace;
 extern crate clap;
 extern crate colored;
 extern crate indicatif;
+#[cfg(feature = "jemalloc")]
 extern crate jemallocator;
 extern crate log;
 extern crate rayon;
@@ -38,6 +39,7 @@ use vanity_gpg::{Backend, CipherSuite, DefaultBackend, UserID};
 
 use logger::{IndicatifBackend, ProgressLogger, ProgressLoggerBackend};
 
+#[cfg(feature = "jemalloc")]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
