@@ -84,8 +84,8 @@ impl Backend for SequoiaBackend {
         // Direct key signature and the secret key
         let direct_key_signature = SignatureBuilder::new(SignatureType::DirectKey)
             .set_hash_algo(HashAlgorithm::SHA512)
-            .set_features(&Features::sequoia())?
-            .set_key_flags(&KeyFlags::empty().set_certification().set_signing())?
+            .set_features(Features::sequoia())?
+            .set_key_flags(KeyFlags::empty().set_certification().set_signing())?
             .set_signature_creation_time(creation_time)?
             .set_key_validity_period(None)?
             .set_preferred_hash_algorithms(vec![HashAlgorithm::SHA512, HashAlgorithm::SHA256])?
@@ -93,7 +93,7 @@ impl Backend for SequoiaBackend {
                 SymmetricAlgorithm::AES256,
                 SymmetricAlgorithm::AES128,
             ])?
-            .sign_direct_key(&mut signer, &primary_key_packet)?;
+            .sign_direct_key(&mut signer, Some(primary_key_packet.parts_as_public()))?;
         packets.push(Packet::SecretKey(primary_key_packet));
         packets.push(direct_key_signature.clone().into());
 
@@ -121,8 +121,8 @@ impl Backend for SequoiaBackend {
         let subkey_signature_builder = SignatureBuilder::new(SignatureType::SubkeyBinding)
             .set_signature_creation_time(creation_time)?
             .set_hash_algo(HashAlgorithm::SHA512)
-            .set_features(&Features::sequoia())?
-            .set_key_flags(&KeyFlags::empty().set_storage_encryption())?
+            .set_features(Features::sequoia())?
+            .set_key_flags(KeyFlags::empty().set_storage_encryption())?
             .set_key_validity_period(None)?;
         let subkey_signature = subkey_packet.bind(&mut signer, &cert, subkey_signature_builder)?;
         cert = cert.insert_packets(vec![
@@ -196,6 +196,7 @@ mod sequoia_backend_test {
     use sequoia_openpgp::armor::{Reader, ReaderMode};
     use sequoia_openpgp::parse::Parse;
     use sequoia_openpgp::types::PublicKeyAlgorithm;
+    use sequoia_openpgp::packet::Signature;
     use std::io::{Cursor, Read};
     use std::time::{Duration, UNIX_EPOCH};
 
@@ -256,7 +257,7 @@ mod sequoia_backend_test {
         let fingerprint_after = cert.fingerprint().to_hex();
         assert_eq!(fingerprint_before, fingerprint_after);
         assert!(cert.is_tsk());
-        assert!(cert.bad_signatures().is_empty());
+        assert!(cert.bad_signatures().collect::<Vec<&Signature>>().is_empty());
         for uid_after in cert.userids() {
             assert_eq!(
                 String::from_utf8_lossy(uid_after.value()),
@@ -327,7 +328,7 @@ mod sequoia_backend_test {
         let fingerprint_after = cert.fingerprint().to_hex();
         assert_eq!(fingerprint_before, fingerprint_after);
         assert!(cert.is_tsk());
-        assert!(cert.bad_signatures().is_empty());
+        assert!(cert.bad_signatures().collect::<Vec<&Signature>>().is_empty());
         for uid_after in cert.userids() {
             assert_eq!(
                 String::from_utf8_lossy(uid_after.value()),
