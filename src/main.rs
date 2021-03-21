@@ -10,6 +10,7 @@ extern crate indicatif;
 extern crate log;
 extern crate rayon;
 extern crate regex;
+extern crate jemallocator;
 
 extern crate vanity_gpg;
 
@@ -36,6 +37,9 @@ use std::time::{Duration, Instant};
 use vanity_gpg::{Backend, CipherSuite, DefaultBackend, UserID};
 
 use logger::{IndicatifBackend, ProgressLogger, ProgressLoggerBackend};
+
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 // Constants
 /// Default log level
