@@ -54,6 +54,7 @@ pub fn sha1_to_hex(binary: &[u8]) -> String {
     let mut result: Vec<u8> = vec![0x0; 40];
 
     if cfg!(all(target_arch = "x86_64", target_feature = "sse4.1")) {
+        #[cfg(all(target_arch = "x86_64", target_feature = "sse4.1"))]
         unsafe {
             sha1_to_hex_sse41(binary, &mut result);
         }
