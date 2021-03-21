@@ -60,7 +60,7 @@ pub enum CipherSuite {
 
 /// Variations of RSA keys
 #[derive(Debug, Clone)]
-pub enum RSA {
+pub enum Rsa {
     RSA2048,
     RSA3072,
     RSA4096,
@@ -79,8 +79,8 @@ pub enum Curve {
 /// Algorithms
 #[derive(Debug, Clone)]
 pub enum Algorithms {
-    RSA(RSA),
-    ECC(Curve),
+    Rsa(Rsa),
+    Ecc(Curve),
 }
 
 /// UserID
@@ -157,19 +157,19 @@ impl CipherSuite {
     /// Get the specific algorithm from cipher suite
     fn get_algorithm(&self, encryption: bool) -> Algorithms {
         match self {
-            CipherSuite::RSA2048 => Algorithms::RSA(RSA::RSA2048),
-            CipherSuite::RSA3072 => Algorithms::RSA(RSA::RSA3072),
-            CipherSuite::RSA4096 => Algorithms::RSA(RSA::RSA4096),
+            CipherSuite::RSA2048 => Algorithms::Rsa(Rsa::RSA2048),
+            CipherSuite::RSA3072 => Algorithms::Rsa(Rsa::RSA3072),
+            CipherSuite::RSA4096 => Algorithms::Rsa(Rsa::RSA4096),
             CipherSuite::Curve25519 => {
                 if encryption {
-                    Algorithms::ECC(Curve::Cv25519)
+                    Algorithms::Ecc(Curve::Cv25519)
                 } else {
-                    Algorithms::ECC(Curve::Ed25519)
+                    Algorithms::Ecc(Curve::Ed25519)
                 }
             }
-            CipherSuite::NistP256 => Algorithms::ECC(Curve::NistP256),
-            CipherSuite::NistP384 => Algorithms::ECC(Curve::NistP384),
-            CipherSuite::NistP521 => Algorithms::ECC(Curve::NistP521),
+            CipherSuite::NistP256 => Algorithms::Ecc(Curve::NistP256),
+            CipherSuite::NistP384 => Algorithms::Ecc(Curve::NistP384),
+            CipherSuite::NistP521 => Algorithms::Ecc(Curve::NistP521),
         }
     }
 

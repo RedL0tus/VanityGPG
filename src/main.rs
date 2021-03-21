@@ -7,10 +7,10 @@ extern crate backtrace;
 extern crate clap;
 extern crate colored;
 extern crate indicatif;
+extern crate jemallocator;
 extern crate log;
 extern crate rayon;
 extern crate regex;
-extern crate jemallocator;
 
 extern crate vanity_gpg;
 
@@ -176,7 +176,7 @@ fn setup_summary<B: ProgressLoggerBackend>(logger_backend: Arc<Mutex<B>>, counte
         debug!("Updating counter information");
         let secs_elapsed = start.elapsed().as_secs();
         logger_backend.lock().unwrap().set_message(&format!(
-            "Summary: {} (avg. {:.2} fingerprint(s)/s)",
+            "Summary: {} (avg. {:.2} hash/s)",
             &counter,
             counter.get_total() as f64 / secs_elapsed as f64
         ));
@@ -217,7 +217,7 @@ impl fmt::Display for Counter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} matched, {} fingerprints generated total",
+            "{} matched, {} total",
             self.get_success(),
             self.get_total(),
         )
@@ -302,7 +302,7 @@ fn main() -> Result<(), Error> {
                     key.save_key(&user_id_cloned, dry_run).unwrap_or(());
                     key = Key::new(DefaultBackend::new(cipher_suite.clone()).unwrap());
                 } else if reshuffle_counter == 0 {
-                    debug!(
+                    info!(
                         "({}): Reshuffle limit reached, generating new primary key",
                         thread_id
                     );

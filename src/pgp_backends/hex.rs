@@ -67,7 +67,7 @@ pub fn sha1_to_hex(binary: &[u8]) -> String {
 #[cfg(test)]
 mod hex_test {
     use super::{sha1_to_hex, sha1_to_hex_sse41};
-    use hex::{encode, encode_upper};
+    use hex::encode_upper;
 
     #[test]
     fn test_sha1_to_hex_sse41() {

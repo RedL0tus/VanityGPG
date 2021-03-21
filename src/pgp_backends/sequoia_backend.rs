@@ -17,8 +17,8 @@ use sequoia_openpgp::types::{
 use sequoia_openpgp::{Cert, Packet};
 
 use super::{
-    sha1_to_hex, Algorithms, ArmoredKey, Backend, CipherSuite, Curve, PGPError, UniversalError,
-    UserID, RSA,
+    sha1_to_hex, Algorithms, ArmoredKey, Backend, CipherSuite, Curve, PGPError, Rsa,
+    UniversalError, UserID,
 };
 
 use std::io::Write;
@@ -39,12 +39,12 @@ fn generate_key(
     for_signing: bool,
 ) -> Result<Key4<SecretParts, PrimaryRole>, PGPError> {
     let wrapped_key: Result<Key4<SecretParts, PrimaryRole>, UniversalError> = match algorithm {
-        Algorithms::RSA(rsa) => match rsa {
-            RSA::RSA2048 => Key4::generate_rsa(2048),
-            RSA::RSA3072 => Key4::generate_rsa(3072),
-            RSA::RSA4096 => Key4::generate_rsa(4096),
+        Algorithms::Rsa(rsa) => match rsa {
+            Rsa::RSA2048 => Key4::generate_rsa(2048),
+            Rsa::RSA3072 => Key4::generate_rsa(3072),
+            Rsa::RSA4096 => Key4::generate_rsa(4096),
         },
-        Algorithms::ECC(curve) => match curve {
+        Algorithms::Ecc(curve) => match curve {
             Curve::Ed25519 => Key4::generate_ecc(for_signing, SequoiaCurve::Ed25519),
             Curve::Cv25519 => Key4::generate_ecc(for_signing, SequoiaCurve::Cv25519),
             Curve::NistP256 => Key4::generate_ecc(for_signing, SequoiaCurve::NistP256),
@@ -76,7 +76,7 @@ impl Backend for SequoiaBackend {
     }
 
     fn get_armored_results(mut self, uid: &UserID) -> Result<ArmoredKey, UniversalError> {
-        let creation_time = UNIX_EPOCH.clone() + Duration::from_secs(self.timestamp as u64);
+        let creation_time = UNIX_EPOCH + Duration::from_secs(self.timestamp as u64);
         self.primary_key.set_creation_time(creation_time)?;
         let mut packets = Vec::<Packet>::new();
         let mut signer = self.primary_key.clone().into_keypair()?;
