@@ -1,7 +1,6 @@
 //! Hex calculation with SIMD
 //!
 //! Based on code from [`faster-hex`](https://github.com/nervosnetwork/faster-hex)
-//! and [a GitHub Gist](https://gist.github.com/0x1F9F1/cba054c667c4e8525d9b12c99fdab7fb)
 //! Originally licensed under the terms of the MIT License.
 
 #[cfg(target_arch = "x86_64")]
