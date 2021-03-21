@@ -4,7 +4,6 @@
 
 use byteorder::{BigEndian, ByteOrder};
 use chrono::{DateTime, TimeZone, Utc};
-use hex::encode_upper;
 use pgp::composed::{KeyDetails, SecretKey, SecretSubkey};
 use pgp::crypto::hash::HashAlgorithm;
 use pgp::crypto::public_key::PublicKeyAlgorithm;
@@ -19,11 +18,12 @@ use pgp::ser::Serialize;
 use pgp::types::{
     CompressionAlgorithm, KeyVersion, PublicParams, SecretKeyTrait, SecretParams, Version,
 };
-use rand::thread_rng;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use sha1::{Digest, Sha1};
 use smallvec::smallvec;
 
-use super::{ArmoredKey, Backend, CipherSuite, PGPError, UniversalError, UserID};
+use super::{sha1_to_hex, ArmoredKey, Backend, CipherSuite, PGPError, UniversalError, UserID};
 
 /// Converter for transmuting to struct with private fields
 #[allow(dead_code)]
@@ -66,7 +66,7 @@ fn generate_key(
     cipher_suite: &CipherSuite,
     for_signing: bool,
 ) -> Result<(KeyType, PublicParams, SecretParams), PGPError> {
-    let mut rng = thread_rng();
+    let mut rng = StdRng::from_entropy();
     match {
         match cipher_suite {
             &CipherSuite::RSA2048 => {
@@ -166,7 +166,7 @@ impl Backend for RPGPBackend {
     fn fingerprint(&self) -> String {
         let mut hasher = Sha1::new();
         hasher.update(&self.packet_cache);
-        encode_upper(hasher.finalize().to_vec())
+        sha1_to_hex(&hasher.finalize().to_vec())
     }
 
     fn shuffle(&mut self) -> Result<(), PGPError> {

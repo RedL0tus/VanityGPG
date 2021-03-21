@@ -13,7 +13,6 @@ extern crate anyhow;
 extern crate byteorder;
 #[cfg(feature = "rpgp")]
 extern crate chrono;
-extern crate hex;
 #[cfg(feature = "rpgp")]
 extern crate pgp;
 #[cfg(feature = "rpgp")]

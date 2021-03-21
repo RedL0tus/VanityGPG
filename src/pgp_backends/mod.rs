@@ -1,6 +1,7 @@
 //! OpenPGP processing backends
 //!
 //! This module contains adapters or wrappers for different OpenPGP implementations.
+mod hex;
 
 #[cfg(feature = "rpgp")]
 mod rpgp_backend;
@@ -9,6 +10,8 @@ mod sequoia_backend;
 
 pub use anyhow::Error as UniversalError;
 use thiserror::Error;
+
+pub use self::hex::sha1_to_hex;
 
 #[cfg(feature = "sequoia")]
 pub use sequoia_backend::SequoiaBackend;

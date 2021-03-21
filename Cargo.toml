@@ -18,12 +18,14 @@ default = [ "sequoia" ]
 sequoia = [ "sequoia-openpgp" ]
 rpgp = [ "pgp", "rand", "chrono", "smallvec" ]
 
+[dev-dependencies]
+hex = "^0.4"
+
 [dependencies]
 log = { version = "^0.4", features = [ "std" ] }
-hex = "^0.4"
 pgp = { version = "^0.7", optional = true }
 clap = "3.0.0-beta.2"
-rand = { version = "^0.8", optional = true }
+rand = { version = "^0.7", optional = true }
 rayon = "^1.5"
 regex = "^1.4"
 sha-1 = { version = "^0.9", features = [ "asm", "compress" ] }
@@ -41,7 +43,7 @@ sequoia-openpgp = { version = "^1.1", optional = true }
 
 [profile.test]
 opt-level = 3
-debug = 0
+debug = true
 debug-assertions = false
 overflow-checks = false
 
