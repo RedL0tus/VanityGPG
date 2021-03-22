@@ -14,10 +14,9 @@ categories = [ "command-line-utilities" ]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "sequoia", "jemalloc" ]
+default = [ "sequoia" ]
 sequoia = [ "sequoia-openpgp" ]
 rpgp = [ "pgp", "rand", "chrono", "smallvec", "sha-1" ]
-jemalloc = [ "jemallocator" ]
 
 [dev-dependencies]
 hex = "^0.4"
@@ -34,12 +33,12 @@ anyhow = "^1.0"
 chrono = { version = "^0.4", optional = true }
 nettle = "^7.0"
 colored = "^2.0"
+mimalloc = { version = "^0.1", default-features = false }
 smallvec = { version = "^1.6", optional = true }
 backtrace = "^0.3"
 byteorder = "^1.4"
 indicatif = "^0.15"
 thiserror = "^1.0"
-jemallocator = { version = "^0.3", optional = true }
 sequoia-openpgp = { version = "^1.1", optional = true }
 
 [profile.test]
