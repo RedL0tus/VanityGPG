@@ -51,6 +51,7 @@ struct SecretSubkeyPacketConverter {
 }
 
 /// VanityGPG backend powered by rPGP
+#[derive(Debug)]
 pub struct RPGPBackend {
     public_params: PublicParams,
     secret_params: SecretParams,

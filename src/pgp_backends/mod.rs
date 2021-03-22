@@ -22,7 +22,10 @@ pub use rpgp_backend::RPGPBackend;
 use std::str::FromStr;
 
 /// The default backend
-#[cfg(feature = "sequoia")]
+#[cfg(any(
+    all(feature = "sequoia", not(feature = "rpgp")),
+    all(feature = "sequoia", feature = "rpgp")
+))]
 pub type DefaultBackend = SequoiaBackend;
 
 /// The default backend

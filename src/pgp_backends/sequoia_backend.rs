@@ -26,6 +26,7 @@ use std::time::Duration;
 use std::time::UNIX_EPOCH;
 
 /// The `Sequoia-OpenPGP` backend wrapper
+#[derive(Debug)]
 pub struct SequoiaBackend {
     primary_key: Key4<SecretParts, PrimaryRole>,
     cipher_suite: CipherSuite,

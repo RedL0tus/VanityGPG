@@ -26,6 +26,10 @@ extern crate smallvec;
 extern crate thiserror;
 
 pub mod pgp_backends;
+#[cfg(feature = "rpgp")]
+pub use pgp_backends::RPGPBackend;
+#[cfg(feature = "sequoia")]
+pub use pgp_backends::SequoiaBackend;
 pub use pgp_backends::{ArmoredKey, Backend, CipherSuite, DefaultBackend, UserID};
 
 #[cfg(test)]
