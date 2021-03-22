@@ -63,7 +63,7 @@ impl Backend for SequoiaBackend {
     fn fingerprint(&self) -> String {
         let mut hasher = Sha1::default();
         hasher.update(&self.packet_cache);
-        let mut digest_buffer: Vec<u8> = vec![0; hasher.digest_size()];
+        let mut digest_buffer: [u8; 20] = [0; 20];
         hasher.digest(&mut digest_buffer);
         // hex_string(&digest_buffer).unwrap()
         sha1_to_hex(&digest_buffer)
