@@ -1,6 +1,6 @@
 [package]
 name = "vanity_gpg"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2018"
 authors = ["Kay Lin <i@v2bv.net>"]
 description = "A simple tool for generating and filtering vanity GPG keys, c0nCurr3nt1Y"
