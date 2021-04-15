@@ -6,6 +6,12 @@
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
+#[cfg(target_arch = "aarch64")]
+extern "C" {
+    #[link_name = "sha1_to_hex_neon"]
+    fn sha1_to_hex_neon_(binary: *const u8, hex: *mut u8);
+}
+
 static TABLE: &[u8; 16] = b"0123456789ABCDEF";
 
 /// SHA-1 binary to hex conversion with SSE4.1
@@ -83,6 +89,13 @@ unsafe fn sha1_to_hex_avx2(binary: &[u8], hex: &mut [u8]) {
     std::ptr::copy_nonoverlapping(padded_output.as_ptr(), hex.as_mut_ptr(), 40);
 }
 
+#[cfg(target_arch = "aarch64")]
+unsafe fn sha1_to_hex_neon(binary: &[u8], hex: &mut [u8]) {
+    sha1_to_hex_neon_(binary.as_ptr(), hex.as_mut_ptr());
+
+    hex_fallback(&binary[16..], &mut hex[32..]);
+}
+
 /// Software implementation of binary to hex
 fn hex_fallback(binary: &[u8], hex: &mut [u8]) {
     for (byte, slots) in binary.iter().zip(hex.chunks_mut(2)) {
@@ -95,7 +108,6 @@ fn hex_fallback(binary: &[u8], hex: &mut [u8]) {
 pub fn sha1_to_hex(binary: &[u8]) -> String {
     let mut result: Vec<u8> = vec![0x0; 40];
 
-    // TODO: Support NEON on AArch64
     if cfg!(target_arch = "x86_64") {
         #[cfg(target_arch = "x86_64")]
         if is_x86_feature_detected!("avx2") {
@@ -105,6 +117,9 @@ pub fn sha1_to_hex(binary: &[u8]) -> String {
         } else {
             hex_fallback(binary, &mut result);
         }
+    } else if cfg!(target_arch = "aarch64") {
+        #[cfg(target_arch = "aarch64")]
+        unsafe { sha1_to_hex_neon(binary, &mut result) }
     } else {
         hex_fallback(binary, &mut result);
     }
@@ -145,6 +160,19 @@ mod hex_test {
             let hex_string = unsafe { String::from_utf8_unchecked(result) };
             assert_eq!(hex_string, encode_upper(data));
         }
+    }
+
+    #[test]
+    #[cfg(target_arch = "aarch64")]
+    fn test_sha1_to_hex_neon() {
+        use super::sha1_to_hex_neon;
+        let data: &[u8; 20] = b"0123456789ABCDEFGHIJ";
+        let mut result: Vec<u8> = vec![0x0; 40];
+        unsafe {
+            sha1_to_hex_neon(data, &mut result);
+        }
+        let hex_string = unsafe { String::from_utf8_unchecked(result) };
+        assert_eq!(hex_string, encode_upper(data));
     }
 
     #[test]

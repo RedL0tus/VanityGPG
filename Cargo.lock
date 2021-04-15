@@ -1853,6 +1853,7 @@ dependencies = [
  "anyhow",
  "backtrace",
  "byteorder",
+ "cc",
  "chrono",
  "clap",
  "colored",
