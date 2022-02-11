@@ -8,9 +8,9 @@ extern crate clap;
 extern crate colored;
 extern crate indicatif;
 extern crate log;
+extern crate mimalloc;
 extern crate rayon;
 extern crate regex;
-extern crate mimalloc;
 
 extern crate vanity_gpg;
 

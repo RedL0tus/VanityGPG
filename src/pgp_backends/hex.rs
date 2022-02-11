@@ -119,7 +119,9 @@ pub fn sha1_to_hex(binary: &[u8]) -> String {
         }
     } else if cfg!(target_arch = "aarch64") {
         #[cfg(target_arch = "aarch64")]
-        unsafe { sha1_to_hex_neon(binary, &mut result) }
+        unsafe {
+            sha1_to_hex_neon(binary, &mut result)
+        }
     } else {
         hex_fallback(binary, &mut result);
     }
