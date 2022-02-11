@@ -18,7 +18,7 @@ mod logger;
 
 use anyhow::Error;
 use backtrace::Backtrace;
-use clap::Clap;
+use clap::Parser;
 use log::{debug, info, warn, Level};
 use rayon::ThreadPoolBuilder;
 use regex::Regex;
@@ -63,14 +63,14 @@ const KEY_RESHUFFLE_LIMIT: usize = 60 * 60 * 24 * 30; // One month ago at worst
 const COUNTER_THRESHOLD: usize = 133331; // Just a random number
 
 /// Commandline option parser with `Clap`
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 #[clap(version = PKG_VERSION, about = PKG_DESCRIPTION)]
 struct Opts {
     /// Concurrent key generation jobs
     #[clap(
         short = 'j',
         long = "jobs",
-        about = "Number of threads",
+        help = "Number of threads",
         default_value = "8"
     )]
     jobs: usize,
@@ -78,32 +78,32 @@ struct Opts {
     #[clap(
         short = 'p',
         long = "pattern",
-        about = "Regex pattern for matching fingerprints"
+        help = "Regex pattern for matching fingerprints"
     )]
     pattern: String,
     /// Cipher suite
     #[clap(
         short = 'c',
         long = "cipher-suite",
-        about = "Cipher suite",
+        help = "Cipher suite",
         default_value = "Ed25519",
         possible_values = &[ "Ed25519", "RSA2048", "RSA3072", "RSA4096", "NISTP256", "NISTP384", "NISTP521" ],
     )]
     cipher_suite: String,
     /// User ID
-    #[clap(short = 'u', long = "user-id", about = "OpenPGP compatible user ID")]
+    #[clap(short = 'u', long = "user-id", help = "OpenPGP compatible user ID")]
     user_id: Option<String>,
     #[clap(
         short = 'd',
         long = "dry-run",
-        about = "Dry run (does not save matched keys)"
+        help = "Dry run (does not save matched keys)"
     )]
     dry_run: bool,
     /// Verbose level
     #[clap(
         short = 'v',
         long = "verbose",
-        about = "Verbose level",
+        help = "Verbose level",
         parse(from_occurrences)
     )]
     verbose: u8,
