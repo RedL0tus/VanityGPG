@@ -15,7 +15,7 @@ impl ProgressLoggerBackend for IndicatifBackend {
     }
 
     fn set_message<S: AsRef<str>>(&self, content: S) {
-        self.inner.set_message(&content.as_ref())
+        self.inner.set_message(content.as_ref().to_string())
     }
 
     fn finish(&self) {
