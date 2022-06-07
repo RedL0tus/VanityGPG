@@ -1929,7 +1929,7 @@ checksum = "957e51f3646910546462e67d5f7599b9e4fb8acdd304b087a6494730f9eebf04"
 
 [[package]]
 name = "vanity_gpg"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "backtrace",
