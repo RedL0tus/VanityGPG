@@ -12,6 +12,13 @@ extern "C" {
     fn sha1_to_hex_neon_(binary: *const u8, hex: *mut u8);
 }
 
+#[cfg(target_arch = "loongarch64")]
+#[cfg(compilerSupportLSX)]
+extern "C" {
+    #[link_name = "sha1_to_hex_lsx"]
+    fn sha1_to_hex_lsx_(binary: *const u8, hex: *mut u8);
+}
+
 static TABLE: &[u8; 16] = b"0123456789ABCDEF";
 
 /// SHA-1 binary to hex conversion with SSE4.1
@@ -96,6 +103,14 @@ unsafe fn sha1_to_hex_neon(binary: &[u8], hex: &mut [u8]) {
     hex_fallback(&binary[16..], &mut hex[32..]);
 }
 
+#[cfg(target_arch = "loongarch64")]
+#[cfg(compilerSupportLSX)]
+unsafe fn sha1_to_hex_lsx(binary: &[u8], hex: &mut [u8]) {
+    sha1_to_hex_lsx_(binary.as_ptr(), hex.as_mut_ptr());
+
+    hex_fallback(&binary[16..], &mut hex[32..]);
+}
+
 /// Software implementation of binary to hex
 fn hex_fallback(binary: &[u8], hex: &mut [u8]) {
     for (byte, slots) in binary.iter().zip(hex.chunks_mut(2)) {
@@ -121,6 +136,12 @@ pub fn sha1_to_hex(binary: &[u8]) -> String {
         #[cfg(target_arch = "aarch64")]
         unsafe {
             sha1_to_hex_neon(binary, &mut result)
+        }
+    } else if cfg!(target_arch = "loongarch64") {
+        if cfg!(compilerSupportLSX) {
+            unsafe { sha1_to_hex_lsx(binary, &mut result) }
+        } else {
+            hex_fallback(binary, &mut result);
         }
     } else {
         hex_fallback(binary, &mut result);
@@ -172,6 +193,20 @@ mod hex_test {
         let mut result: Vec<u8> = vec![0x0; 40];
         unsafe {
             sha1_to_hex_neon(data, &mut result);
+        }
+        let hex_string = unsafe { String::from_utf8_unchecked(result) };
+        assert_eq!(hex_string, encode_upper(data));
+    }
+
+    #[test]
+    #[cfg(target_arch = "loongarch64")]
+    #[cfg(compilerSupportLSX)]
+    fn test_sha1_to_hex_lsx() {
+        use super::sha1_to_hex_lsx;
+        let data: &[u8; 20] = b"0123456789ABCDEFGHIJ";
+        let mut result: Vec<u8> = vec![0x0; 40];
+        unsafe {
+            sha1_to_hex_lsx(data, &mut result);
         }
         let hex_string = unsafe { String::from_utf8_unchecked(result) };
         assert_eq!(hex_string, encode_upper(data));
