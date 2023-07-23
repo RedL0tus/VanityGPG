@@ -15,8 +15,9 @@ categories = [ "command-line-utilities" ]
 
 [features]
 default = [ "sequoia" ]
-sequoia = [ "sequoia-openpgp" ]
+sequoia = [ "sequoia-openpgp", "nettle" ]
 rpgp = [ "pgp", "rand", "chrono", "smallvec", "sha-1" ]
+msa = []
 
 [dev-dependencies]
 hex = "^0.4"
@@ -28,13 +29,12 @@ cc = "1.0"
 log = { version = "^0.4", features = [ "std" ] }
 pgp = { version = "^0.7", optional = true }
 clap = { version = "^3.1", features = [ "derive" ] }
-rand = { version = "^0.8", optional = true }
+rand = { version = "^0.7", optional = true }
 rayon = "^1.5"
 regex = "^1.5"
-sha-1 = { version = "^0.10", features = [ "asm", "compress" ], optional = true }
 anyhow = "^1.0"
 chrono = { version = "^0.4", optional = true }
-nettle = "^7.2"
+nettle = { version = "^7.2", optional = true }
 colored = "^2.0"
 mimalloc = { version = "^0.1", default-features = false }
 smallvec = { version = "^1.8", optional = true }
@@ -43,6 +43,12 @@ byteorder = "^1.4"
 indicatif = "^0.16"
 thiserror = "^1.0"
 sequoia-openpgp = { version = "^1.9", optional = true }
+
+[target.'cfg(any(target_arch = "aarch64", target_arch = "x86_64"))'.dependencies]
+sha-1 = { version = "^0.10", features = [ "asm", "compress" ], optional = true }
+
+[target.'cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))'.dependencies]
+sha-1 = { version = "^0.10", features = [ "compress" ], optional = true }
 
 [profile.test]
 opt-level = 3
