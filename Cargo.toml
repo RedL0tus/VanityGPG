@@ -17,6 +17,7 @@ categories = [ "command-line-utilities" ]
 default = [ "sequoia" ]
 sequoia = [ "sequoia-openpgp" ]
 rpgp = [ "pgp", "rand", "chrono", "smallvec", "sha-1" ]
+msa = []
 
 [dev-dependencies]
 hex = "^0.4"
