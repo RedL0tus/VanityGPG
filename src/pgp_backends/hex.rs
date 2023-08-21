@@ -138,6 +138,7 @@ pub fn sha1_to_hex(binary: &[u8]) -> String {
             sha1_to_hex_neon(binary, &mut result)
         }
     } else if cfg!(target_arch = "loongarch64") {
+        #[cfg(target_arch = "loongarch64")]
         if cfg!(compilerSupportLSX) {
             unsafe { sha1_to_hex_lsx(binary, &mut result) }
         } else {
