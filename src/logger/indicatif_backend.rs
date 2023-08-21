@@ -2,6 +2,8 @@
 
 use indicatif::{ProgressBar, ProgressStyle};
 
+use std::time::Duration;
+
 use super::ProgressLoggerBackend;
 
 pub struct IndicatifBackend {
@@ -26,11 +28,11 @@ impl ProgressLoggerBackend for IndicatifBackend {
 impl IndicatifBackend {
     pub fn init() -> Self {
         let progress_bar = ProgressBar::new_spinner();
-        progress_bar.enable_steady_tick(100);
+        progress_bar.enable_steady_tick(Duration::from_millis(100));
         progress_bar.set_style(
             ProgressStyle::default_spinner()
                 .tick_strings(&["▹▹▹▹▹", "▸▹▹▹▹", "▹▸▹▹▹", "▹▹▸▹▹", "▹▹▹▸▹", "▹▹▹▹▸"])
-                .template("{spinner:.blue} {msg}"),
+                .template("{spinner:.blue} {msg}").expect("Failed to set theme"),
         );
         progress_bar.set_message("Initializing");
         Self {

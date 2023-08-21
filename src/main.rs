@@ -18,7 +18,7 @@ mod logger;
 
 use anyhow::Error;
 use backtrace::Backtrace;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use log::{debug, info, warn, Level};
 use rayon::ThreadPoolBuilder;
 use regex::Regex;
@@ -28,7 +28,6 @@ use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 use std::panic;
-use std::str::FromStr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -62,6 +61,18 @@ const KEY_RESHUFFLE_LIMIT: usize = 60 * 60 * 24 * 30; // One month ago at worst
 /// Counter threshold
 const COUNTER_THRESHOLD: usize = 133331; // Just a random number
 
+/// Possible values for CipherSuite
+#[derive(ValueEnum, Clone, Debug)]
+enum CipherSuiteValues {
+    Ed25519,
+    RSA2048,
+    RSA3072,
+    RSA4096,
+    NISTP256,
+    NISTP384,
+    NISTP521,
+}
+
 /// Commandline option parser with `Clap`
 #[derive(Parser, Debug)]
 #[clap(version = PKG_VERSION, about = PKG_DESCRIPTION)]
@@ -86,10 +97,8 @@ struct Opts {
         short = 'c',
         long = "cipher-suite",
         help = "Cipher suite",
-        default_value = "Ed25519",
-        possible_values = &[ "Ed25519", "RSA2048", "RSA3072", "RSA4096", "NISTP256", "NISTP384", "NISTP521" ],
     )]
-    cipher_suite: String,
+    cipher_suite: CipherSuiteValues,
     /// User ID
     #[clap(short = 'u', long = "user-id", help = "OpenPGP compatible user ID")]
     user_id: Option<String>,
@@ -104,7 +113,7 @@ struct Opts {
         short = 'v',
         long = "verbose",
         help = "Verbose level",
-        parse(from_occurrences)
+        action = clap::ArgAction::Count
     )]
     verbose: u8,
 }
@@ -180,6 +189,26 @@ fn setup_summary<B: ProgressLoggerBackend>(logger_backend: Arc<Mutex<B>>, counte
             &counter,
             counter.get_total() as f64 / secs_elapsed as f64
         ));
+    }
+}
+
+impl Default for CipherSuiteValues {
+    fn default() -> Self {
+        Self::Ed25519
+    }
+}
+
+impl From<&CipherSuiteValues> for CipherSuite {
+    fn from(value: &CipherSuiteValues) -> Self {
+        match &value {
+            CipherSuiteValues::Ed25519 => CipherSuite::Curve25519,
+            CipherSuiteValues::RSA2048 => CipherSuite::RSA2048,
+            CipherSuiteValues::RSA3072 => CipherSuite::RSA3072,
+            CipherSuiteValues::RSA4096 => CipherSuite::RSA4096,
+            CipherSuiteValues::NISTP256 => CipherSuite::NistP256,
+            CipherSuiteValues::NISTP384 => CipherSuite::NistP384,
+            CipherSuiteValues::NISTP521 => CipherSuite::NistP521,
+        }
     }
 }
 
@@ -287,7 +316,7 @@ fn main() -> Result<(), Error> {
         let user_id_cloned = user_id.clone();
         let pattern = Regex::new(&opts.pattern)?;
         let dry_run = opts.dry_run;
-        let cipher_suite = CipherSuite::from_str(&opts.cipher_suite)?;
+        let cipher_suite = CipherSuite::from(&opts.cipher_suite);
         let counter_cloned = Arc::clone(&counter);
         info!("({}): Spawning thread", thread_id);
         pool.spawn(move || {
