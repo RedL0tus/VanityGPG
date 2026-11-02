@@ -22,27 +22,27 @@ rpgp = [ "pgp", "rand", "chrono", "smallvec", "sha-1" ]
 hex = "^0.4"
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.2"
 
 [dependencies]
 log = { version = "^0.4", features = [ "std" ] }
 pgp = { version = "^0.10", optional = true }
-clap = { version = "^4.3", features = [ "derive" ] }
+clap = { version = "^4.6", features = [ "derive" ] }
 rand = { version = "^0.8", optional = true }
-rayon = "^1.7"
-regex = "^1.9"
+rayon = "^1.12"
+regex = "^1.13"
 sha-1 = { version = "^0.10", features = [ "asm", "compress" ], optional = true }
 anyhow = "^1.0"
 chrono = { version = "^0.4", optional = true }
-nettle = "^7.3"
-colored = "^2.0"
+nettle = "^7.5"
+colored = "^3.1"
 mimalloc = { version = "^0.1", default-features = false }
-smallvec = { version = "^1.11", optional = true }
+smallvec = { version = "^1.15", optional = true }
 backtrace = "^0.3"
-byteorder = "^1.4"
-indicatif = "^0.17"
-thiserror = "^1.0"
-sequoia-openpgp = { version = "^1.16", optional = true }
+byteorder = "^1.5"
+indicatif = "^0.18"
+thiserror = "^2.0"
+sequoia-openpgp = { version = "^1.22", optional = true }
 
 [profile.test]
 opt-level = 3
